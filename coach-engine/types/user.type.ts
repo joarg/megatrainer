@@ -15,6 +15,8 @@ export type User = {
 	motivations: string[];
 	goals: string[];
 	pendingQsAndComments: string[];
+	pendingReturnPhase: Nullable<string>;
+	pendingReturnPhaseAttempts: Nullable<number>;
 	followUp: Nullable<string>;
 };
 
@@ -31,5 +33,7 @@ export type UserUpdate = Partial<{
 	motivations: Nullable<MaybeArray<string>>;
 	goals: Nullable<MaybeArray<string>>;
 	pendingQsAndComments: Nullable<MaybeArray<string>>;
+	pendingReturnPhase: Nullable<string>;
+	pendingReturnPhaseAttempts: Nullable<number>;
 	followUp: Nullable<string>;
 }>;

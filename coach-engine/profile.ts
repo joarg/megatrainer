@@ -1,4 +1,9 @@
-import { MaybeArray, Nullable, User, UserUpdate } from '../types/user.type';
+import type {
+	MaybeArray,
+	Nullable,
+	User,
+	UserUpdate,
+} from './types/user.type.js';
 
 export function createEmptyUser(): User {
 	return {
@@ -14,7 +19,9 @@ export function createEmptyUser(): User {
 		motivations: [],
 		goals: [],
 		pendingQsAndComments: [],
-		followUp: null,
+		pendingReturnPhase: null,
+		pendingReturnPhaseAttempts: null,
+		followUp: 'name,age,location',
 	};
 }
 
@@ -24,7 +31,7 @@ function appendUnique(existing: string[], incoming?: Nullable<MaybeArray<string>
 	}
 
 	const nextValues = Array.isArray(incoming) ? incoming : [incoming];
-	const seen = new Set(existing.map((v) => v.trim().toLowerCase()));
+	const seen = new Set(existing.map((value) => value.trim().toLowerCase()));
 	const merged = [...existing];
 
 	for (const value of nextValues) {
@@ -44,8 +51,6 @@ function appendUnique(existing: string[], incoming?: Nullable<MaybeArray<string>
 }
 
 export function mergeUser(current: User, update: UserUpdate): User {
-	const mergedFollowUp = update.followUp === undefined ? current.followUp : update.followUp;
-
 	return {
 		name: update.name ?? current.name,
 		age: update.age ?? current.age,
@@ -59,6 +64,6 @@ export function mergeUser(current: User, update: UserUpdate): User {
 		motivations: appendUnique(current.motivations, update.motivations),
 		goals: appendUnique(current.goals, update.goals),
 		pendingQsAndComments: appendUnique(current.pendingQsAndComments, update.pendingQsAndComments),
-		followUp: mergedFollowUp,
+		followUp: update.followUp === undefined ? current.followUp : update.followUp,
 	};
 }

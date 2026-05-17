@@ -1,0 +1,17 @@
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.env.local
+.env.*.local
+dist/
+build/
+node_modules/
+*.log
+logs/
+.coverage
+.nyc_output/
+postgres_data/
+ollama_data/

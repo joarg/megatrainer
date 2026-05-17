@@ -1,0 +1,101 @@
+# Development stack: Bun API + Angular Web + PostgreSQL + Ollama
+# Run locally: docker-compose up -d
+# Then: bun install && bun run dev:api & bun run dev:web
+
+
+services:
+  # API service (Bun + Elysia)
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api.dev
+    container_name: megatrainer_api
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://devuser:devpass@postgres:5432/megatrainer_db
+      OLLAMA_ENDPOINT: http://ollama:11434
+    ports:
+      - "3000:3000"
+      - "4983:4983"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: megatrainer_postgres
+    environment:
+      POSTGRES_DB: megatrainer_db
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devuser -d megatrainer_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Ollama LLM service (local inference)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: megatrainer_ollama
+    gpus: all
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # One-shot bootstrap that ensures the required Ollama model is available.
+  ollama-model-init:
+    image: curlimages/curl:latest
+    depends_on:
+      ollama:
+        condition: service_started
+    environment:
+      OLLAMA_HOST: http://ollama:11435
+      OLLAMA_BOOTSTRAP_MODEL: ${OLLAMA_MODEL}
+    entrypoint: /bin/sh
+    command: 
+      - -c
+      - |
+        echo "Checking for ${OLLAMA_MODEL} model..."
+        curl -s http://ollama:11434/api/tags | grep -q "${OLLAMA_MODEL}" && echo "Model already exists" && exit 0
+        echo "Pulling ${OLLAMA_MODEL}..."
+        curl -X POST http://ollama:11434/api/pull -H "Content-Type: application/json" -d "{\"name\":\"${OLLAMA_MODEL}\"}"
+    restart: "no"
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: megatrainer_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+  ollama_data:
+
+networks:
+  default:
+    name: megatrainer_network
