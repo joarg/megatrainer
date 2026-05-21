@@ -1,0 +1,1 @@
+ALTER TABLE "onboardingSessions" ADD COLUMN "userprofile" jsonb;

@@ -1,0 +1,18 @@
+import { Elysia } from "elysia";
+import { cors } from "@elysiajs/cors";
+import { trainerModule } from "./modules/trainer";
+import { debugModule } from "./modules/trainer/onboarding";
+import { openapi } from '@elysiajs/openapi'
+
+const app = new Elysia()
+  .use(cors())
+  .use(openapi())
+  .get("/", () => "Hello Elysia")
+  .get("/health", () => ({ status: "ok" }))
+  .use(trainerModule)
+  .use(debugModule)
+  .listen(3000);
+  
+  export type App = typeof app; 
+
+console.log("Elysia is runniffffng at " + app.server?.hostname + ":" + app.server?.port);
