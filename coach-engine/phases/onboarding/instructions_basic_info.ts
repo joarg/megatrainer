@@ -33,19 +33,20 @@ Return the FULL profile JSON with these exact keys:
 }`;
 
 export const BASIC_INFO_PROMPTS = {
-	followUp: [
-		`One second ago We just sent an initial greeting to the user, they have not replied to this, but now we 
-    are sending our second message, so its sort of just a continuation of the first message which is 
-    available in the "lastAssistantMessage" field. 
-    This message is a request for them to give us their name, 
-    age and location. 
+  followUp: [
+    `We just started the onboarding process. The "lastAssistantMessage" contains an initial introduction that we sent to the user
+    now its your job to continue the conversation from that last
+     Assistant message and bridge the conversation with a short sentence into asking for name, age and location. 
+Ignore the last user input, this was not done by the user but as a
+     way to start the conversation. Ask for three things only here, name age and location.  
+
     `,
 
-		`The user still has missing basic info. Acknowledge it and ask
+    `The user still has missing basic info. Acknowledge it and ask
      in a softer way. Mention it is optional.`,
 
-		`This is the last attempt for basic info. If fields are still missing, 
+    `This is the last attempt for basic info. If fields are still missing, 
     say we can continue and fill it later, then transition to next phase.`,
-	],
-	done: `With your personality, let the user know we have everything we need for now and we're ready to move on.`,
+  ],
+  done: `With your personality, let the user know we have everything we need for now and we're ready to move on.`,
 } as const;

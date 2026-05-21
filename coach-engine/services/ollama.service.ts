@@ -15,7 +15,7 @@ function addToLog(input: OllamaPhaseInput, response: OllamaChatResponse): void {
     phaseCalled: input.phaseCalled ?? 'unknown',
     phaseAttemptNumber: input.phaseAttemptNumber ?? 0,
     timestamp: new Date().toISOString(),
-    request: { prompt: input.prompt, userMessage: input.userMessage },
+    request: { prompt: input.prompt, userMessage: input.userMessage, lastAssistantMessage: input.lastAssistantMessage },
     response: response.message.content,
     thinking: response.message.thinking,
   });

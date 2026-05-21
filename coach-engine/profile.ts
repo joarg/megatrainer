@@ -18,9 +18,6 @@ export function createEmptyUser(): User {
 		injuries: [],
 		motivations: [],
 		goals: [],
-		pendingQsAndComments: [],
-		pendingReturnPhase: null,
-		pendingReturnPhaseAttempts: null,
 		followUp: 'name,age,location',
 	};
 }
@@ -63,7 +60,6 @@ export function mergeUser(current: User, update: UserUpdate): User {
 		injuries: appendUnique(current.injuries, update.injuries),
 		motivations: appendUnique(current.motivations, update.motivations),
 		goals: appendUnique(current.goals, update.goals),
-		pendingQsAndComments: appendUnique(current.pendingQsAndComments, update.pendingQsAndComments),
 		followUp: update.followUp === undefined ? current.followUp : update.followUp,
 	};
 }

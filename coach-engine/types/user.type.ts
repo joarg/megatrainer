@@ -14,9 +14,6 @@ export type User = {
 	injuries: string[];
 	motivations: string[];
 	goals: string[];
-	pendingQsAndComments: string[];
-	pendingReturnPhase: Nullable<string>;
-	pendingReturnPhaseAttempts: Nullable<number>;
 	followUp: Nullable<string>;
 };
 
@@ -32,8 +29,5 @@ export type UserUpdate = Partial<{
 	injuries: Nullable<MaybeArray<string>>;
 	motivations: Nullable<MaybeArray<string>>;
 	goals: Nullable<MaybeArray<string>>;
-	pendingQsAndComments: Nullable<MaybeArray<string>>;
-	pendingReturnPhase: Nullable<string>;
-	pendingReturnPhaseAttempts: Nullable<number>;
 	followUp: Nullable<string>;
 }>;

@@ -1,12 +1,10 @@
 import type { User } from './user.type.js';
 
 export const ONBOARDING_PHASES = {
-	greeting: 'greeting',
 	basicInfo: 'basicInfo',
 	motivationsAndGoals: 'motivationsAndGoals',
 	backgroundAndMetrics: 'backgroundAndMetrics',
 	toolsAndTime: 'toolsAndTime',
-	handleQsAndComments: 'handleQsAndComments',
 } as const;
 
 export type OnboardingPhaseId =
@@ -53,14 +51,9 @@ export type OllamaPhaseInput = PhaseInput & {
 
 export type TurnOutput = {
 	assistantMessage: string;
-	pendingAnswers: string[];
-	messages?: ConversationMessage[];
 	updatedUserProfile: User;
 	nextPhase: OnboardingPhaseId;
-	nextPhaseAttempts: number;
 	phaseComplete: boolean;
-	/** When true, the orchestrator immediately chains to nextPhase without requiring phaseComplete. */
-	handoff?: boolean;
 };
 
 export type PhaseContext = {
