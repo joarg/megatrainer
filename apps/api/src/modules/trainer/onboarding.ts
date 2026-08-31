@@ -4,10 +4,7 @@ import { onboardingSessionsTable, trainerTable } from "../../schema";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createEmptyUser } from "../../../../../coach-engine/profile.js";
-import { ONBOARDING_PHASES, generateGreeting, processTurn } from "../../../../../coach-engine/index.js";
-import { takeOllamaLog } from "../../../../../coach-engine/services/ollama.service.js";
 import type { User } from "../../../../../coach-engine/types/user.type.js";
-import type { ConversationMessage } from "../../../../../coach-engine/types/types.js";
 
 // Shared route params for endpoints scoped by trainer slug + session id.
 const sessionParamsSchema = t.Object({
@@ -233,7 +230,6 @@ export const onboardingModule = new Elysia({ prefix: "/:slug/onboarding" })
             phase: turnResult.nextPhase,
             phaseAttempts: turnResult.nextPhase !== session.phase ? 0 : session.phaseAttempts + 1,
             userprofile: turnResult.updatedUserProfile,
-            ollamaLog: takeOllamaLog(),
             complete: isComplete,
           });
 
@@ -274,7 +270,7 @@ export const debugModule = new Elysia({ prefix: "/debug" }).post(
       currentUserProfile,
       lastAssistantMessage: body.lastAssistantMessage,
     });
-    return { ...turnResult, ollamaLog: takeOllamaLog() };
+    return turnResult;
   },
   {
     body: t.Object({

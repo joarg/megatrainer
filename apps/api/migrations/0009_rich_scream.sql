@@ -1,0 +1,1 @@
+ALTER TABLE "onboardingSessions" ADD COLUMN "chatHistory" jsonb DEFAULT '[]'::jsonb NOT NULL;

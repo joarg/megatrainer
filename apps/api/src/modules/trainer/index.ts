@@ -52,6 +52,7 @@ export const trainerModule = new Elysia({ prefix: "/trainers" })
   .get("/", async () => {
     return db.select().from(trainerTable);
   })
+  
   .get(
     "/:slug",
     async ({ params, set }) => {
@@ -67,9 +68,7 @@ export const trainerModule = new Elysia({ prefix: "/trainers" })
       }
 
       return trainer;
-    },
-    {
-      params: trainerSlugParamsSchema,
     }
+    
   )
   .use(onboardingModule);

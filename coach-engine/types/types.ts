@@ -7,67 +7,29 @@ export const ONBOARDING_PHASES = {
 	toolsAndTime: 'toolsAndTime',
 } as const;
 
-export type OnboardingPhaseId =
-	(typeof ONBOARDING_PHASES)[keyof typeof ONBOARDING_PHASES];
-
-export type InterviewField =
-	| 'name'
-	| 'age'
-	| 'location'
-	| 'trainingBackground'
-	| 'performanceMetrics'
-	| 'injuries'
-	| 'motivations'
-	| 'goals';
-
-export type PhaseInput = {
-	userMessage: string;
+export type OllamaInput = {
 	personality: string;
 	trainerName?: string;
-	selectedSport?: string;
+	selectedSport?: string[];
 	currentUserProfile?: User;
+	prompt: string;
+	userMessage: string;
 	lastAssistantMessage?: string;
 };
 
-export type ConversationMessage = {
-	role: 'assistant' | 'manager';
-	text: string;
+export type TurnInput = {
+    userMessage: string;
+    personality: string;
+    trainerName?: string;
+    selectedSport?: string[];
+    currentUserProfile?: User;
+    lastAssistantMessage?: string;
+    phase: keyof typeof ONBOARDING_PHASES;
+    phaseAttempts: number;
 };
 
-export type EmitFn = (message: ConversationMessage) => void;
-
-export type TurnInput = PhaseInput & {
-	phase: string;
-	phaseAttempts: number;
-	emit?: EmitFn;
-};
-
-export type OllamaPhaseInput = PhaseInput & {
-	prompt: string;
-	currentUserInfo?: string;
-	phaseCalled?: string;
-	phaseAttemptNumber?: number;
-};
-
-export type TurnOutput = {
-	assistantMessage: string;
-	updatedUserProfile: User;
-	nextPhase: OnboardingPhaseId;
-	phaseComplete: boolean;
-};
-
-export type PhaseContext = {
-	input: TurnInput;
-	currentUserProfile: User;
-};
-
-export type PhaseHandler = (context: PhaseContext) => Promise<TurnOutput>;
-
-export type OllamaLogEntry = {
-	phaseCalled: string;
-	phaseAttemptNumber: number;
-	timestamp: string;
-	request: { prompt: string; userMessage: string };
-	response: string;
-	thinking?: string;
+export type ProcessMessageResult = {
+    response: string;
+	updatedUserProfile?: User;
+    nextPhase: keyof typeof ONBOARDING_PHASES | null;
 };

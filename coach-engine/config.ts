@@ -1,7 +1,9 @@
 //export const MODEL = 'gemma4:e4b-it-q8_0'
-export const MODEL = 'gemma4:e2b-it-q8_0'
-//export const MODEL = 'gemma3:27b-it-qat';
+export const MODEL_LIGHT = 'gemma4:e2b-it-q8_0'
+export const MODEL_HEAVY = 'gemma3:27b-it-qat';
 // export const MODEL = 'gpt-oss:20b';
+export const MODEL_GOOGLE = 'gemma4';
+export const MODEL_GOOGLE2 = 'gemma4:e2b';
 
 export const OLLAMA_ENDPOINT = (globalThis as typeof globalThis & {
 	process?: { env?: Record<string, string | undefined> };

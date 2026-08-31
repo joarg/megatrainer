@@ -1,17 +1,10 @@
 <script lang="ts">
 	import { treaty } from '@elysiajs/eden';
-	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import type { PageProps } from './$types';
 	import type { App } from '../../../../../../api/src/index';
 
 	const api = treaty<App>('http://localhost:3000');
-
-	const PHASE_LABELS: Record<string, string> = {
-		basicInfo: 'Basic Info',
-		backgroundAndMetrics: 'Background & Metrics',
-		motivationsAndGoals: 'Motivations & Goals',
-	};
 
 	type ConversationMessage = {
 		id: number;
@@ -19,39 +12,21 @@
 		text: string;
 	};
 
-	type OllamaLogEntry = {
-		phaseCalled: string;
-		phaseAttemptNumber: number;
-		timestamp: string;
-		request: { prompt: string; userMessage: string };
-		response: string;
-	};
-
 	let { data }: PageProps = $props();
 
-	const getInitialTrainerReply = () => data.session?.lastAssistantMessage ?? '';
-
 	let userMessage = $state('');
-	let messageCounter = $state(1);
-	let conversation = $state<ConversationMessage[]>(
-		getInitialTrainerReply()
-			? [{ id: 0, role: 'assistant', text: getInitialTrainerReply() }]
-			: []
-	);
+	let messageCounter = $state(0);
+	// There's no endpoint to re-fetch a session's chat history, so the only source
+	// for the opening messages is the navigation state set by the page that created
+	// the session (see the $effect below). On a hard refresh this will start empty.
+	let conversation = $state<ConversationMessage[]>([]);
 	let sendStatus = $state('');
 	let isSending = $state(false);
-	let ollamaLog = $state<OllamaLogEntry[]>([]);
 
-	let currentPhase = $state(untrack(() => data.session?.phase ?? 'basicInfo'));
-	let currentAttempts = $state(untrack(() => data.session?.phaseAttempts ?? 0));
-	let currentProfile = $state<Record<string, unknown> | null>(
-		untrack(() => (data.session?.userprofile as Record<string, unknown>) ?? null)
-	);
-	let onboardingComplete = $state(false);
+	// currentProfile is only ever updated from /onboarding/message responses below;
+	// there's no way to hydrate it from the server on load (see +page.server.ts).
+	let currentProfile = $state<Record<string, unknown> | null>(null);
 
-	// On first navigation to this page the session creation passes initial messages
-	// (greeting + basicInfo first question) via history state. Override the single
-	// lastAssistantMessage from SSR with the full array once the client mounts.
 	$effect(() => {
 		const stateMessages = (page.state as { initialMessages?: Array<{ role: string; text: string }> })?.initialMessages;
 		if (stateMessages && stateMessages.length > 0) {
@@ -63,15 +38,6 @@
 			messageCounter = stateMessages.length;
 		}
 	});
-
-	function getPhaseLabel(phase: string) {
-		return PHASE_LABELS[phase] ?? phase;
-	}
-
-	function appendOllamaLog(entries: OllamaLogEntry[] | undefined) {
-		if (!entries || entries.length === 0) return;
-		ollamaLog = [...ollamaLog, ...entries];
-	}
 
 	async function onMessageSubmit(event: SubmitEvent) {
 		event.preventDefault();
@@ -85,61 +51,28 @@
 		sendStatus = 'Sending...';
 
 		const startedAt = Date.now();
-		const url = `http://localhost:3000/trainers/${data.slug}/onboarding/sessions/${data.session.id}/message/stream`;
-		const response = await fetch(url, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ message: trimmedMessage }),
+		const { data: result, error } = await api.onboarding.message.post({
+			sessionId: data.sessionId,
+			claimToken: data.claimToken,
+			userInput: trimmedMessage,
 		});
 
-		if (!response.ok || !response.body) {
-			console.error('Failed to send onboarding message', response.status);
+		if (error || !result) {
+			console.error('Failed to send onboarding message', error);
 			sendStatus = 'Failed to send message';
 			isSending = false;
 			return;
 		}
 
-		const prevPhase = currentPhase;
-		const reader = response.body.getReader();
-		const decoder = new TextDecoder();
-		let buffer = '';
+		conversation = [...conversation, { id: messageCounter++, role: 'assistant', text: result.question ?? '' }];
+		currentProfile = (result.updatedUserProfile as Record<string, unknown>) ?? currentProfile;
 
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-
-			buffer += decoder.decode(value, { stream: true });
-			const parts = buffer.split('\n\n');
-			buffer = parts.pop() ?? '';
-
-			for (const part of parts) {
-				const eventLine = part.match(/^event: (\w+)/m);
-				const dataLine = part.match(/^data: (.+)/m);
-				if (!eventLine || !dataLine) continue;
-
-				const eventType = eventLine[1];
-				const payload = JSON.parse(dataLine[1]);
-
-				if (eventType === 'message') {
-					conversation = [...conversation, { id: messageCounter++, role: payload.role, text: payload.text }];
-				} else if (eventType === 'done') {
-					currentPhase = payload.phase ?? currentPhase;
-					currentAttempts = payload.phaseAttempts ?? currentAttempts;
-					currentProfile = payload.userprofile ?? currentProfile;
-					appendOllamaLog(payload.ollamaLog);
-					if (payload.complete) onboardingComplete = true;
-				}
-			}
-		}
-
-		if (prevPhase !== currentPhase) {
+		// The API only tells us a phase transition happened, not the phase names
+		// involved (that detail isn't included in the /onboarding/message response).
+		if (result.phaseComplete) {
 			conversation = [
 				...conversation,
-				{
-					id: messageCounter++,
-					role: 'assistant',
-					text: `[System] Phase transition: ${getPhaseLabel(prevPhase)} -> ${getPhaseLabel(currentPhase)}`,
-				},
+				{ id: messageCounter++, role: 'assistant', text: '[System] Moving on to the next phase...' },
 			];
 		}
 
@@ -151,7 +84,7 @@
 
 <div class="layout">
 	<div class="chat-col">
-		<h1>Onboarding</h1>
+		<h1>Onboarding with {data.trainer.name}</h1>
 
 		{#if conversation.length > 0}
 			<div class="conversation">
@@ -164,11 +97,6 @@
 			</div>
 		{/if}
 
-		{#if onboardingComplete}
-			<div class="complete-banner">
-				<strong>Onboarding complete!</strong> Your profile is all set. Your trainer will be in touch shortly.
-			</div>
-		{:else}
 		<form onsubmit={onMessageSubmit}>
 			<label for="user-message">Your message</label>
 			<input
@@ -180,7 +108,6 @@
 			/>
 			<button type="submit" disabled={!userMessage.trim() || isSending}>Send</button>
 		</form>
-		{/if}
 
 		{#if sendStatus}
 			<p class="send-status">{sendStatus}</p>
@@ -193,20 +120,6 @@
 		<section class="debug-section">
 			<h3>User Profile</h3>
 			<pre class="raw">{JSON.stringify(currentProfile, null, 2)}</pre>
-		</section>
-
-		<section class="debug-section">
-			<h3>Ollama Log ({ollamaLog.length})</h3>
-			{#if ollamaLog.length === 0}
-				<p class="followup-text">No Ollama calls logged yet.</p>
-			{:else}
-				{#each [...ollamaLog].reverse() as entry, i}
-					<div class="log-entry">
-						<div class="log-meta">[{ollamaLog.length - i}] {entry.phaseCalled} | attempt {entry.phaseAttemptNumber} | {new Date(entry.timestamp).toLocaleTimeString()}</div>
-						<pre class="raw">{JSON.stringify(entry, null, 2)}</pre>
-					</div>
-				{/each}
-			{/if}
 		</section>
 	</aside>
 </div>

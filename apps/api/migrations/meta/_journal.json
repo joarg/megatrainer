@@ -50,6 +50,27 @@
       "when": 1777847744269,
       "tag": "0006_eager_fat_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780441720256,
+      "tag": "0007_luxuriant_penance",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780443115007,
+      "tag": "0008_cultured_toro",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787349234931,
+      "tag": "0009_rich_scream",
+      "breakpoints": true
     }
   ]
 }

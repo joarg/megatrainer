@@ -7,6 +7,5 @@ Tell the user we will touch on subjects that we need
    accesss to. Use your trainer personality, and introduce yourself.
     summarize all this into something that leads the user to expect that the
      app knows what its doing, but at the same time
-      use your personality and background to bridge the conversation.
-       Dont be too lengthy, you can probably summarize the the points above into
-        two or three sentences. `;
+      use your personality and background.
+       Dont be too lengthy, this a a mobile first app. `;

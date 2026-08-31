@@ -9,7 +9,19 @@ export const trainerTable = p.pgTable("trainers", {
     slug: p.text().notNull().unique(),
 });
 
-export const onboardingStatusEnum = p.pgEnum("status", ["active", "inactive", "archived"]);
+
+export const phaseEnum = p.pgEnum("phase", ["basicInfo", "motivationsAndGoals", "backgroundAndMetrics", "toolsAndTime"]);
+
+// A finalized onboarding turn for debugging:
+// what the assistant asked previously, what the user replied, and how the assistant responded.
+export type ChatHistoryEntry = {
+    previousAssistantMessage: string | null;
+    userMessage: string;
+    assistantResponse: string;
+    phaseBefore: (typeof phaseEnum.enumValues)[number];
+    phaseAfter: (typeof phaseEnum.enumValues)[number];
+    at: string;
+};
 
 export const onboardingSessionsTable = p.pgTable("onboardingSessions", {
     id: p.serial().primaryKey(),
@@ -17,15 +29,16 @@ export const onboardingSessionsTable = p.pgTable("onboardingSessions", {
     userId: p.integer(),
     userprofile: p.jsonb(),
     claimToken: p.text().notNull().unique(),
-    status: onboardingStatusEnum().default("active").notNull(),
-    phase: p.text().default("basicInfo").notNull(),
+    phase: phaseEnum(),
     phaseAttempts: p.integer().default(0).notNull(),
-    selectedSport: p.text(),
+    selectedSport: p.text().array(),
     lastAssistantMessage: p.text(),
+    chatHistory: p.jsonb().$type<ChatHistoryEntry[]>().default([]).notNull(),
     createdAt: p.timestamp().defaultNow().notNull(),
     updatedAt: p.timestamp().defaultNow().notNull(),
     completedAt: p.timestamp(),
 });
+
 
 export type InsertTrainer = typeof trainerTable.$inferInsert;
 export type SelectTrainer = typeof trainerTable.$inferSelect;

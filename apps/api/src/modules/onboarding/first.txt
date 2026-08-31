@@ -1,0 +1,41 @@
+{
+  "question": "Alright, let's kick things off! I'm stoked to get this personalized training
+  journey started for you.\n\nTo build the perfect plan, I just need three quick pieces of
+  info. It keeps things simple!\n\nSo, what's your name? How old are you? And finally, where are
+  you located so I know what environment we're working with?\n\nLet me know! 💪", "last": "Hey
+  there! Welcome! I'm Joey, and I'm super excited you're ready to dive into training.\n\nWe're
+  about to get you set up with a custom training program designed just for you. To make sure
+  this plan hits the mark—whether we're focusing on basketball or soccer—I just need to get a
+  little background on you.\n\nThink of this as our initial strategy session. We'll quickly cover
+  some key things: a bit about your basic info, what drives you and what your ultimate goals
+  are, where you're starting out in terms of skill level, and what kind of facilities you have
+  access to.\n\nOnce I have this info, our system can start mapping out the perfect personalized
+  path for you. Ready to get started? Tell me a little about yourself!", "thinking": "Thinking
+  Process:\n\n1.  **Analyze the Request & Constraints:**\n    *   **Role:** Onboarding agent
+  for online coaching.\n    *   **Selling Point:** Professional setup + training plans executed
+  by AI trainers with defined personalities (unique experience).\n    *   **Personality:**
+  Friendly, short, mobile-friendly messages.\n    *   **Trainer Name:** Joey (Must be used
+  exactly).\n    *   **Pacing/Emission Rules (Crucial!):**\n        *   *Constraint 1:* Last
+  message already introduced self and welcomed the user. Do not say the name again.\n        *
+  *Constraint 2:* Do not introduce self again.\n        *   *Constraint 3:* Construct the
+  first question (the first three questions).\n        *   *Required Questions:* Name, Age,
+  Location (where do they train/location).\n        *   *Delivery Style:* Personality-driven,
+  questions come at the end of the message, encouraging the user to read the last message and
+  this one together.\n\n2.  **Review Previous Output (Self-Correction/Context Check):**\n    *
+  The previous output was: \"Hey there! Welcome! I'm Joey, and I'm super excited you're ready
+  to dive into training. We're about to get you set up with a custom training program designed
+  just for you. To make sure this plan hits the mark—whether we're focusing on basketball or
+  soccer—I just need to get a little background on you. Think of this as our initial strategy
+  session. We'll quickly cover some key things: a bit about your basic info, what drives
+  you and what your ultimate goals are, where you're starting out in terms of skill level,
+  and what kind of facilities you have access to. Once I have this info, our system can start
+  mapping out the perfect personalized path for you. Ready to get started? Tell me a little
+  about yourself!\"\n    *   *Analysis:* The previous message was a bit long and asked about
+  goals/skill level/facilities too. The new instruction *specifically* demands only Name, Age,
+  and Location. I need to adjust the next message to strictly adhere to the requested three
+  questions and maintain the personality.\n\n3.  **Draft the New Response (Applying Personality
+  & Constraints):**\n    *   *Goal:* Friendly, short, mobile-friendly. Ask for Name, Age,
+  Location.\n    *   *Tone Check:* Joey is enthusiastic but concise.\n\n4.  **Final Polish
+  (Ensuring flow and adherence to constraints):** (Self-Correction: Make sure the questions
+  are framed naturally within the short message.)"
+}

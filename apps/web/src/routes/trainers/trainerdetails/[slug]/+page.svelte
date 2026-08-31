@@ -21,9 +21,15 @@
 		const fallbackSports = Array.isArray(data.trainer.sports) ? data.trainer.sports : [];
 		const sportsForSession = selectedSports.length > 0 ? selectedSports : fallbackSports;
 
-		const { data: created, error } = await api
-			.trainers({ slug: data.trainer.slug })
-			.onboarding.session.post({ selectedSports: sportsForSession });
+		// Frontend already knows the trainer's id from the page's own load (GET /trainers/{slug}),
+		// so we resolve slug -> id here rather than asking the API to do it.
+		// Eden's generated type for this route doesn't reflect that userId/userProfile
+		// are optional server-side (a known treaty quirk with multi-content-type bodies).
+		// The handler never reads them, so it's safe to omit here.
+		const { data: created, error } = await api.onboarding.start.post({
+			trainerId: data.trainer.id,
+			selectedSport: sportsForSession
+		} as Parameters<typeof api.onboarding.start.post>[0]);
 
 		if (error) {
 			console.error('Failed to create onboarding session', error);
@@ -41,11 +47,38 @@
 		onboardingSessionId = created.sessionId;
 		createSessionStatus = 'Onboarding session started';
 
+		// The flow this API expects is start -> initial-question -> message (see
+		// apps/api/src/modules/onboarding/testOnboarding.sh / testFirstQuestion.sh).
+		// The greeting from /onboarding/start is just the opening remarks; the first
+		// real question ("give me your name/age/location") comes from this call.
+		const { data: firstQuestion, error: firstQuestionError } = await api.onboarding[
+			'initial-question'
+		].post({
+			sessionId: created.sessionId,
+			claimToken: created.claimToken
+		});
+
+		if (firstQuestionError) {
+			console.error('Failed to fetch first onboarding question', firstQuestionError);
+			createSessionStatus = 'Failed to start onboarding session';
+			isWaiting = false;
+			return;
+		}
+
+		const initialMessages = [
+			...(created.greeting ? [{ role: 'assistant', text: created.greeting }] : []),
+			...(firstQuestion?.question ? [{ role: 'assistant', text: firstQuestion.question }] : [])
+		];
+
+		// claimToken has to travel with the session id because /onboarding/message
+		// requires both to authenticate a turn. There's no backend endpoint to look
+		// a session up again later, so we carry it in the URL alongside `meeting`.
 		const params = new URLSearchParams({
-			meeting: String(created.sessionId)
+			meeting: String(created.sessionId),
+			claimToken: created.claimToken
 		});
 		await goto(`/meet/${data.trainer.slug}/intro?${params.toString()}`, {
-			state: { initialMessages: created.messages ?? [] }
+			state: { initialMessages }
 		});
 	}
 

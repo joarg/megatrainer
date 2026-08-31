@@ -4,29 +4,9 @@ export type OllamaMessage = {
   thinking?: string;
 };
 
-type OllamaChatResponse = {
-  message: OllamaMessage;
-};
 
-const ollamaLog: OllamaLogEntry[] = [];
-
-function addToLog(input: OllamaPhaseInput, response: OllamaChatResponse): void {
-  ollamaLog.push({
-    phaseCalled: input.phaseCalled ?? 'unknown',
-    phaseAttemptNumber: input.phaseAttemptNumber ?? 0,
-    timestamp: new Date().toISOString(),
-    request: { prompt: input.prompt, userMessage: input.userMessage, lastAssistantMessage: input.lastAssistantMessage },
-    response: response.message.content,
-    thinking: response.message.thinking,
-  });
-}
-
-export function takeOllamaLog(): OllamaLogEntry[] {
-  return ollamaLog.splice(0);
-}
-
-import type { OllamaLogEntry, OllamaPhaseInput } from '../types/types.js';
-import { MODEL, OLLAMA_ENDPOINT, SYSTEM_INSTRUCTION } from '../config.js';
+import type {  OllamaInput } from '../types/types.js';
+import {MODEL_GOOGLE,  MODEL_GOOGLE2,  MODEL_HEAVY, MODEL_LIGHT, OLLAMA_ENDPOINT, SYSTEM_INSTRUCTION } from '../config.js';
 
 export function parseJsonFromModelContent(content: string) {
   let text = content.trim();
@@ -51,25 +31,22 @@ export function parseJsonFromModelContent(content: string) {
   }
 }
 
-function buildSystemPrompt(input: OllamaPhaseInput) {
-  const parts = [
+function buildSystemPrompt(input: OllamaInput): string {
+  return [
     `<|think|>\n${SYSTEM_INSTRUCTION}`,
     `personality: ${input.personality}`,
-    input.trainerName
-      ? `trainerName: ${input.trainerName}\nKeep this exact trainer name in all responses. Never invent or change your name.`
-      : null,
-    `phasemission: ${input.prompt}`,
-    input.selectedSport ? `selectedSport: ${input.selectedSport}` : null,
-  ].filter((part): part is string => Boolean(part));
-
-  if (input.currentUserInfo) {
-    parts.push(`accumulatedUserInfo: ${input.currentUserInfo}`);
-  }
-
-  return parts.join("\n\n");
+    input.trainerName && `trainerName: ${input.trainerName}\nKeep this exact trainer name in all responses. Never invent or change your name.`,
+    `instructions: ${input.prompt}`,
+    input.selectedSport?.length && `selectedSport: ${input.selectedSport.join(', ')}`,  
+    input.currentUserProfile && `currentUserProfile: ${JSON.stringify(input.currentUserProfile, null, 2)}`,
+  ]
+    // && produces `false` for missing optional fields — filter removes those,
+    // then join separates each section with a blank line for the model to parse clearly.
+    .filter((s): s is string => Boolean(s))
+    .join('\n\n');
 }
 
-export async function callOllamaPhase(input: OllamaPhaseInput) {
+export async function callOllama(input: OllamaInput) {
   const systemPrompt = buildSystemPrompt(input);
   const endpoint = `${OLLAMA_ENDPOINT}/api/chat`;
 
@@ -77,19 +54,25 @@ export async function callOllamaPhase(input: OllamaPhaseInput) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: MODEL,
+      model: MODEL_GOOGLE2,
       stream: false,
+      think: false,
       messages: [
         { role: "system", content: systemPrompt },
         ...(input.lastAssistantMessage
           ? [{ role: "assistant", content: input.lastAssistantMessage }]
           : []),
-        { role: "user", content: input.userMessage },
+        ...(input.userMessage
+          ? [{ role: "user", content: input.userMessage }]
+          : []),
       ],
     }),
   });
 
-  const data = (await response.json()) as OllamaChatResponse;
-  addToLog(input, data);
-  return data.message;
+  if (!response.ok) {
+    throw new Error(`Ollama error: ${response.status} ${response.statusText}`);
+  }
+
+  const { message } = await response.json() as { message: OllamaMessage };
+  return message;
 }
