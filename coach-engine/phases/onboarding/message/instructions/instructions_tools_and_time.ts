@@ -9,13 +9,13 @@ export const ASSESSMENT_PROMPT = `You receive:
 
 Your task: extract any relevant information from the user message and merge it into the profile.
 
-Capture ANY relevant data the user mentions that you think fits into a field in the user data.
 Never discard information. Keep all existing profile values unless the user explicitly corrects them.
 
-This phase is responsible for understanding what equipment or facilities the user has access to, and how much time per week they can dedicate to training.
-Store this information in the trainingBackground field (e.g. "home gym", "commercial gym", "3 days per week").
-This field is shared with an earlier phase, so it will likely already contain unrelated entries (e.g. a sport name or training history) — that is expected. ALWAYS append the equipment/time details from the user's latest message on top of what's already there; do not skip extraction just because the array is non-empty.
+This phase is ONLY responsible for the equipmentAndSchedule field: understanding what equipment or facilities the user has access to, and how much time per week they can dedicate to training.
+Store this information in the equipmentAndSchedule field (e.g. "home gym", "commercial gym", "3 days per week").
 Set followUp to null if we have a clear picture of their available equipment and time commitment. Otherwise describe what is still missing.
+
+OUT-OF-SCOPE INFO: If the user's message contains other genuinely new information that belongs to a different phase (e.g. training history, performance numbers, injuries, motivations, goals) — do NOT guess which specific field it belongs to, and do NOT write it into trainingBackground, performanceMetrics, injuries, motivations, or goals yourself. Instead, copy the relevant detail (lightly cleaned up, one topic per entry) as a new item into unclassifiedNotes. A dedicated later step will route each note to the correct field.
 
 IMPORTANT: The previous message shown to you (role "assistant") is YOUR OWN prior question to the user, not something the user asked. Never copy or paraphrase it into pendingQsAndComments. Only add to pendingQsAndComments if the user's own latest message itself contains a genuine question or comment directed at you.
 If the user has any questions then add it to pendingQsAndComments with a note that it is a user question. Rephrase it so that its correct and complete in its form.
@@ -34,7 +34,9 @@ Return the FULL profile JSON with these exact keys:
   "injuries": string[],
   "motivations": string[],
   "goals": string[],
+  "equipmentAndSchedule": string[],
   "pendingQsAndComments": string[],
+  "unclassifiedNotes": string[],
   "followUp": string|null
 }`;
 

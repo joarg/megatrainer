@@ -1,10 +1,11 @@
-import { promptsForPhases } from './instructions/promptObject.js'
+import { promptsForPhases, ownedFieldsForPhase } from './instructions/promptObject.js'
 import { callOllama } from '../../../services/ollama.service.js';
 import { getAssessmentInput, getResponseInput } from './ollamainputs.js';
 import { parseJsonFromModelContent } from '../../../services/ollama.service.js';
 import type { TurnInput, ProcessMessageResult, OllamaInput } from '../../../types/types.js';
 import type { User } from '../../../types/user.type.js';
 import { mergeProfiles } from './instructions/message.service.js';
+import { classifyUnclassifiedNotes, applyClassifierUpdate } from './instructions/classifier.js';
 
 const MAX_ASSESSMENT_ATTEMPTS = 3;
 
@@ -23,6 +24,18 @@ async function runAssessment(assessmentInput: OllamaInput, logLabel: string): Pr
         }
     }
     return undefined;
+}
+
+// Plain structural check used to decide whether a later phase can be skipped without
+// asking its own question: true only if every field that phase owns already holds real
+// data. No LLM judgment involved, so there's nothing to hallucinate — those fields can
+// only ever have been populated from actual user-provided text (see promptObject.ts's
+// ownedFieldsForPhase for why this is safe to trust).
+function isPhaseAlreadySatisfied(phase: keyof typeof promptsForPhases, profile: User): boolean {
+    return ownedFieldsForPhase[phase].every((field) => {
+        const value = profile[field];
+        return Array.isArray(value) ? value.length > 0 : value != null;
+    });
 }
 
 export async function processMessage(input: TurnInput): Promise<ProcessMessageResult> {
@@ -54,8 +67,19 @@ export async function processMessage(input: TurnInput): Promise<ProcessMessageRe
         };
     }
 
-    const mergedProfile = mergeProfiles(assessmentProfile, input.currentUserProfile!);
+    let mergedProfile = mergeProfiles(assessmentProfile, input.currentUserProfile!);
     console.log('Merging currentprofile with assessement profile and got :', mergedProfile);
+
+    // If this phase's assessment noticed something outside its own scope, it will have
+    // dropped a raw snippet into unclassifiedNotes instead of guessing a field. Route
+    // those into their real fields now, using only the real text that was actually said
+    // (as opposed to the old "silent lookahead", which asked an assessment prompt to
+    // judge with no new evidence at all and could hallucinate placeholder answers).
+    if (mergedProfile.unclassifiedNotes && mergedProfile.unclassifiedNotes.length > 0) {
+        console.log(`Routing ${mergedProfile.unclassifiedNotes.length} unclassified note(s) captured during ${input.phase} phase.`);
+        const classifierUpdate = await classifyUnclassifiedNotes(mergedProfile.unclassifiedNotes, mergedProfile);
+        mergedProfile = applyClassifierUpdate(mergedProfile, classifierUpdate);
+    }
 
     // We've already used every scripted follow-up prompt (including the "last attempt, move on" one)
     // and the profile is still incomplete. Stop asking and force the phase forward instead of
@@ -89,22 +113,26 @@ export async function processMessage(input: TurnInput): Promise<ProcessMessageRe
         };
     }
 
-    // Nothing is missing from the user profile in our phase after the assessment. Before asking
-    // the next phase's intro question, do ONE silent check of whether the next phase is ALSO
-    // already satisfied by data the user already volunteered earlier (e.g. equipment/time
-    // mentioned in an early info-dump message) — if so, skip straight past it instead of
-    // re-asking for info we already have. Deliberately bounded to a single lookahead hop (not a
-    // full chain through every remaining phase): each blind lookahead call (no fresh user message
-    // to react to) is both an extra ~10-30s LLM round trip and a bit less reliable at catching
-    // genuine gaps than a real turn, so chaining through several in one request was both far too
-    // slow in practice and let real gaps slip through. Any phases beyond the immediate next one
-    // will still resolve quickly over the following turn(s).
+    // Nothing is missing from the user profile in our phase after the assessment. Walk
+    // forward through subsequent phases, skipping any whose own fields are already fully
+    // populated — a plain structural check, no LLM call involved. This is safe (unlike the
+    // old "silent lookahead", which asked an assessment prompt to judge with zero new
+    // evidence and could hallucinate a false "satisfied" signal): a phase's owned fields
+    // can only ever contain real data, either from that phase's own turn, or from the
+    // unclassifiedNotes classifier routing something the user genuinely said earlier.
+    // Since there's no LLM cost per hop, we can chain through every already-satisfied
+    // phase in one turn instead of bounding it to a single lookahead hop.
     if (assessmentProfile.followUp === null) {
-        const nextPhase = promptsForPhases[input.phase].nextPhase;
-        console.log(`No follow up needed in ${input.phase} phase, checking next phase;`, nextPhase);
-        if (!nextPhase) {
-            // nextPhase is null here on purpose — input.phase was the last configured phase
-            // (toolsAndTime), and it has nothing left in its followUp, so onboarding is complete.
+        let candidatePhase = promptsForPhases[input.phase].nextPhase;
+        console.log(`No follow up needed in ${input.phase} phase, checking next phase;`, candidatePhase);
+
+        while (candidatePhase && isPhaseAlreadySatisfied(candidatePhase, mergedProfile)) {
+            console.log(`${candidatePhase} fields are already populated from earlier in the conversation, skipping without asking.`);
+            candidatePhase = promptsForPhases[candidatePhase].nextPhase;
+        }
+
+        if (!candidatePhase) {
+            // We walked off the end of the phase chain with everything already satisfied.
             const responseObjectToReturn = {
                 response: 'onboarding complete',
                 updatedUserProfile: mergedProfile,
@@ -115,60 +143,15 @@ export async function processMessage(input: TurnInput): Promise<ProcessMessageRe
             return responseObjectToReturn;
         }
 
-        // Silent lookahead: ask nextPhase's own assessment to judge the profile we already have,
-        // with no new user message — this tells us whether nextPhase's own criteria are already
-        // met purely from data collected so far.
-        const lookaheadInput: OllamaInput = {
-            personality: 'neutral and concise,output is JSON only, the notes in the followup fields are  meant for other agents to formulate good questions with their own personality ',
-            selectedSport: input.selectedSport,
-            prompt: promptsForPhases[nextPhase].assessmentPrompt,
-            userMessage: '',
-            currentUserProfile: mergedProfile,
-        };
-        const lookaheadProfile = await runAssessment(lookaheadInput, `${nextPhase} lookahead`);
-        const introPrompt = promptsForPhases[nextPhase].introductionPrompt || 'empty prompt';
-
-        // profileForIntro/introTargetPhase default to introducing nextPhase normally — used as-is
-        // if the lookahead failed, or if nextPhase genuinely still needs something.
-        let profileForIntro = mergedProfile;
-        let introTargetPhase = nextPhase;
-
-        if (lookaheadProfile) {
-            const chainedProfile = mergeProfiles(lookaheadProfile, mergedProfile);
-            if (!chainedProfile.followUp) {
-                // nextPhase is ALSO already fully satisfied — skip past it in this same turn and
-                // introduce whatever comes after it instead (or complete onboarding outright).
-                console.log(`Lookahead found ${nextPhase} already satisfied, skipping ahead without asking.`);
-                const afterNextPhase = promptsForPhases[nextPhase].nextPhase;
-                if (!afterNextPhase) {
-                    const responseObjectToReturn = {
-                        response: 'onboarding complete',
-                        updatedUserProfile: chainedProfile,
-                        nextPhase: null,
-                    };
-                    console.log('Returning from processMessage with onboarding complete :', responseObjectToReturn);
-                    console.log(`processMessage took ${((Date.now() - startTime) / 1000).toFixed(2)}s`);
-                    return responseObjectToReturn;
-                }
-                profileForIntro = chainedProfile;
-                introTargetPhase = afterNextPhase;
-            } else {
-                console.log(`Lookahead found ${nextPhase} still needs data, introducing it.`, chainedProfile.followUp);
-                profileForIntro = chainedProfile;
-            }
-        } else {
-            console.log(`Lookahead assessment for ${nextPhase} failed, introducing it normally.`);
-        }
-
-        const finalIntroPrompt = introTargetPhase === nextPhase ? introPrompt : (promptsForPhases[introTargetPhase].introductionPrompt || 'empty prompt');
-        console.log('Calling next phase response agent for next phase with :', finalIntroPrompt, profileForIntro);
-        const responseInput = getResponseInput(finalIntroPrompt, profileForIntro, input);
+        const introPrompt = promptsForPhases[candidatePhase].introductionPrompt || 'empty prompt';
+        console.log('Calling next phase response agent for next phase with :', introPrompt, mergedProfile);
+        const responseInput = getResponseInput(introPrompt, mergedProfile, input);
         const response = await callOllama(responseInput);
         console.log('Response from next phase response agent :', response);
         const responseObjectToReturn = {
             response: response.content,
-            updatedUserProfile: profileForIntro,
-            nextPhase: introTargetPhase,
+            updatedUserProfile: mergedProfile,
+            nextPhase: candidatePhase,
         };
         console.log('Returning from processMessage with nextPhase :', responseObjectToReturn);
         console.log(`processMessage took ${((Date.now() - startTime) / 1000).toFixed(2)}s`);

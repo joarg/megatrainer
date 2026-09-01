@@ -4,7 +4,6 @@ export const ASSESSMENT_PROMPT = `You receive:
 
 Your task: extract any relevant information from the user message and merge it into the profile.
 
-Capture ANY relevant data the user mentions that you think fits into a field in the user data.
 Never discard information. Keep all existing profile values unless the user explicitly corrects them.
 
 This phase is ONLY responsible for the name, age, and location fields.
@@ -12,9 +11,9 @@ For the followUp field: return either null or a comma-separated list of missing 
 Use exact field keys only, no extra prose. Example: "name,age".
 If no fields are missing, set followUp to null.
 
-EQUIPMENT & SCHEDULE: If the user mentions what equipment/facilities they have access to (e.g. "home gym", "commercial gym", "outdoor court") or how much time/how many days per week they can train — even in passing, and even though that's not this phase's focus — capture it into the trainingBackground field right away (e.g. "home gym", "3 days per week") so it isn't lost. A later phase will still confirm and fill in any gaps.
-
 For gender: Use location of the user to make a guess on what gender the name is likely to be on this location. Take some chances. Always populate genderNotes with your reasoning.
+
+OUT-OF-SCOPE INFO: If the user's message contains other genuinely new information that belongs to a different phase (e.g. equipment/facilities they have access to, training time/days per week, training history, performance numbers, injuries, motivations, goals) — do NOT guess which specific field it belongs to, and do NOT put it into any field other than your own (name/age/location/gender/genderNotes/country). Instead, copy the relevant detail (lightly cleaned up, one topic per entry) as a new item into unclassifiedNotes. A dedicated later step will route each note to the correct field.
 
 IMPORTANT: The previous message shown to you (role "assistant") is YOUR OWN prior question to the user, not something the user asked. Never copy or paraphrase it into pendingQsAndComments. Only add to pendingQsAndComments if the user's own latest message itself contains a genuine question or comment directed at you.
 If the user has any questions then add it to pendingQsAndComments with a note that it is a user question. Rephrase it so that its correct and complete in its form.
@@ -31,7 +30,9 @@ Return the FULL profile JSON with these exact keys, remember to set the followUp
   "injuries": string[],
   "motivations": string[],
   "goals": string[],
+  "equipmentAndSchedule": string[],
   "pendingQsAndComments": string[],
+  "unclassifiedNotes": string[],
   "followUp": string|null
 }`;
 

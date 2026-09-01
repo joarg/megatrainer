@@ -67,15 +67,6 @@
 		conversation = [...conversation, { id: messageCounter++, role: 'assistant', text: result.question ?? '' }];
 		currentProfile = (result.updatedUserProfile as Record<string, unknown>) ?? currentProfile;
 
-		// The API only tells us a phase transition happened, not the phase names
-		// involved (that detail isn't included in the /onboarding/message response).
-		if (result.phaseComplete) {
-			conversation = [
-				...conversation,
-				{ id: messageCounter++, role: 'assistant', text: '[System] Moving on to the next phase...' },
-			];
-		}
-
 		sendStatus = `Message sent in ${Date.now() - startedAt} ms`;
 		userMessage = '';
 		isSending = false;

@@ -13,7 +13,6 @@ You receive:
 
 Your task: extract any relevant information from the user message and merge it into the profile.
 
-Capture ANY relevant data the user mentions that you think fits into a field in the user data.
 Never discard information. Keep all existing profile values unless the user explicitly corrects them.
 
 In this turn we especially want to know about the users motivations and goals for training. These are two distinct concepts:
@@ -34,11 +33,10 @@ will make it into a question. If both are missing, say so in the followup.
 
 This phase is ONLY responsible for the motivations and goals fields.
 Do NOT flag other fields (e.g. trainingBackground, performanceMetrics, injuries) as missing — those belong to a later phase and will be collected separately.
-Do NOT write vague or placeholder values into trainingBackground or performanceMetrics in this phase (e.g. just a bare sport name, or a passing mention of a skill) — leave those alone unless the user gives concrete, specific details; the phase that owns them will ask properly later.
-EXCEPTION: if the user explicitly states what equipment/facilities they have access to, or how much time/how many days per week they can train, capture that concrete detail into trainingBackground right away (e.g. "home gym", "3 days per week") so it isn't lost, even though this phase doesn't normally own that field.
+
+OUT-OF-SCOPE INFO: If the user's message contains other genuinely new information that belongs to a different phase (e.g. equipment/facilities, training time/days per week, training history, performance numbers, injuries) — do NOT guess which specific field it belongs to, and do NOT write it into trainingBackground, performanceMetrics, injuries, or equipmentAndSchedule yourself. Instead, copy the relevant detail (lightly cleaned up, one topic per entry) as a new item into unclassifiedNotes. A dedicated later step will route each note to the correct field.
 Set followUp to null if both motivations and goals are present.
 
-If the user explicitly says they have no injuries, do not leave injuries empty. Store it as ["none reported"].
 IMPORTANT: The previous message shown to you (role "assistant") is YOUR OWN prior question to the user, not something the user asked. Never copy or paraphrase it into pendingQsAndComments. Only add to pendingQsAndComments if the user's own latest message itself contains a genuine question or comment directed at you.
 If the user explicitly asks a question, add it to pendingQsAndComments with a note that it is a user question. Rephrase it so that it is correct and complete in its form.
 NEVER add internal observations, missing-field notes, or follow-up reminders to pendingQsAndComments — use the followUp field for those.
@@ -56,7 +54,9 @@ Return the FULL profile JSON with these exact keys:
   "injuries": string[],
   "motivations": string[],
   "goals": string[],
+  "equipmentAndSchedule": string[],
   "pendingQsAndComments": string[],
+  "unclassifiedNotes": string[],
   "followUp": string|null
 }`;
 
