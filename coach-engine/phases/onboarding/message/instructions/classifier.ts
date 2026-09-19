@@ -29,6 +29,8 @@ Your ONLY job: for each note, decide which of these fields it genuinely belongs 
 CRITICAL RULES:
 - Only use information that is ACTUALLY present in the notes you were given. Never invent, assume, or guess a value for a field the notes don't mention.
 - If a note is too vague or ambiguous to confidently place anywhere, leave it out of every field entirely — do not force it into the closest-sounding one.
+- A single note can contain multiple facts and belong to multiple fields. Extract every supported fact; do not choose only one destination for a compound note.
+- Example: "My motivation is to work against injuries; I have a lot of injuries" must add a motivation about working against injuries AND an injury entry reporting multiple injuries. Do not invent the injury types.
 - Every field in your response is a list of NEW items only (the caller merges these into the existing profile) — do not repeat items already present in the accumulated profile you were shown.
 - Do not return name, age, gender, genderNotes, location, country, followUp, or pendingQsAndComments — leave those out of your response entirely.
 

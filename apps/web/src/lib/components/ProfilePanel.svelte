@@ -91,9 +91,7 @@
 	const filledKeys = $derived(
 		new Set(ALL_FIELDS.filter((f) => isFilled(profile?.[f.key])).map((f) => f.key)),
 	);
-	const completion = $derived(Math.round((filledKeys.size / ALL_FIELDS.length) * 100));
 	const phaseIndex = $derived(Math.max(0, PHASES.findIndex((p) => p.key === phase)));
-	const remainingPhases = $derived(complete ? 0 : PHASES.length - phaseIndex - 1);
 
 	// Which phase's questions/answers are expanded. Defaults to whatever phase is
 	// currently active; the user may expand any other phase to review past answers.
@@ -168,16 +166,9 @@
 <section class="panel" aria-label="Your profile">
 	<header class="panel-head">
 		<h2>Your profile</h2>
-		<p class="completion-label">
-			Profile completion: <strong>{completion}%</strong>
-			{#if !complete}
-				<span class="sep">·</span>{remainingPhases}
-				{remainingPhases === 1 ? 'phase' : 'phases'} left
-			{/if}
+		<p class="progress-label">
+			{complete ? 'Onboarding complete' : `Step ${phaseIndex + 1} of ${PHASES.length}`}
 		</p>
-		<div class="meter" role="progressbar" aria-valuenow={completion} aria-valuemin="0" aria-valuemax="100">
-			<div class="meter-fill" style="width: {completion}%"></div>
-		</div>
 	</header>
 
 	<ol class="outline">
@@ -265,28 +256,10 @@
 		gap: 0.4rem;
 	}
 
-	.completion-label {
+	.progress-label {
 		margin: 0;
 		font-size: 0.8rem;
 		color: var(--mt-text-muted, #94a3b8);
-	}
-
-	.sep {
-		margin: 0 0.35rem;
-	}
-
-	.meter {
-		height: 8px;
-		border-radius: 999px;
-		background: rgba(255, 255, 255, 0.08);
-		overflow: hidden;
-	}
-
-	.meter-fill {
-		height: 100%;
-		border-radius: 999px;
-		background: linear-gradient(90deg, #b8860b, var(--mt-gold, #f0b429));
-		transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
 	.outline {

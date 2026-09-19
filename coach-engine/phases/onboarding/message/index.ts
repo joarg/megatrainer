@@ -67,7 +67,7 @@ export async function processMessage(input: TurnInput): Promise<ProcessMessageRe
         };
     }
 
-    let mergedProfile = mergeProfiles(assessmentProfile, input.currentUserProfile!);
+    let mergedProfile = mergeProfiles(assessmentProfile, input.currentUserProfile!, input.phase);
     console.log('Merging currentprofile with assessement profile and got :', mergedProfile);
 
     // If this phase's assessment noticed something outside its own scope, it will have
