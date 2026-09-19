@@ -15,13 +15,24 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://devuser:devpass@postgres:5432/megatrainer_db
       OLLAMA_ENDPOINT: http://ollama:11434
+      COMFYUI_ENDPOINT: http://comfyui:8188
+      MEDIA_DIR: /app/media
+      # Which portrait checkpoint profile to generate with: "lightning"
+      # (fast, lower quality), "juggernaut" or "realvisxl" (slower, full-step,
+      # higher quality — see image-engine/config.ts for tuning per profile).
+      # Change and restart the api service to A/B compare models.
+      PORTRAIT_MODEL: juggernaut
     ports:
       - "3000:3000"
       - "4983:4983"
+    volumes:
+      - media_data:/app/media
     depends_on:
       postgres:
         condition: service_healthy
       ollama:
+        condition: service_started
+      comfyui:
         condition: service_started
 
   # PostgreSQL database
@@ -81,6 +92,87 @@ services:
         curl -X POST http://ollama:11434/api/pull -H "Content-Type: application/json" -d "{\"name\":\"${OLLAMA_MODEL}\"}"
     restart: "no"
 
+  # ComfyUI image-generation service (local Stable Diffusion inference, same
+  # "local model over HTTP" pattern as the Ollama service above).
+  comfyui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.comfyui
+    container_name: megatrainer_comfyui
+    gpus: all
+    ports:
+      - "8188:8188"
+    environment:
+      CLI_ARGS: ""
+    volumes:
+      - comfyui_models:/root/ComfyUI/models
+      - comfyui_output:/root/ComfyUI/output
+      - comfyui_input:/root/ComfyUI/input
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8188/system_stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # One-shot bootstrap that downloads the portrait checkpoints into ComfyUI's
+  # model volume the first time the stack is started. Downloads every
+  # checkpoint known to config.ts's PORTRAIT_MODEL_PROFILES so switching
+  # PORTRAIT_MODEL on the api service (see below) doesn't require a re-run.
+  # ~21GB combined; only missing files are fetched on subsequent starts.
+  comfyui-model-init:
+    image: curlimages/curl:latest
+    user: "0:0"
+    depends_on:
+      comfyui:
+        condition: service_started
+    environment:
+      # Fast, low-quality default (kept for quick smoke-testing).
+      LIGHTNING_URL: https://huggingface.co/Lykon/dreamshaper-xl-lightning/resolve/main/DreamShaperXL_Lightning.safetensors
+      LIGHTNING_NAME: DreamShaperXL_Lightning.safetensors
+      # Slower, higher-quality full-step SDXL checkpoints for when there's
+      # time to wait. Match the "juggernaut" / "realvisxl" PORTRAIT_MODEL
+      # profiles in image-engine/config.ts.
+      JUGGERNAUT_URL: https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors
+      JUGGERNAUT_NAME: Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors
+      REALVISXL_URL: https://huggingface.co/SG161222/RealVisXL_V4.0/resolve/main/RealVisXL_V4.0.safetensors
+      REALVISXL_NAME: RealVisXL_V4.0.safetensors
+      # IPAdapter Plus Face (SDXL): lets the action-shot workflow condition
+      # generation on a trainer's portrait so both images look like the same
+      # person. Names must match IPADAPTER_CLIP_VISION_FILE /
+      # IPADAPTER_MODEL_FILE in image-engine/config.ts.
+      CLIP_VISION_URL: https://huggingface.co/h94/IP-Adapter/resolve/main/models/image_encoder/model.safetensors
+      CLIP_VISION_NAME: CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors
+      IPADAPTER_URL: https://huggingface.co/h94/IP-Adapter/resolve/main/sdxl_models/ip-adapter-plus-face_sdxl_vit-h.safetensors
+      IPADAPTER_NAME: ip-adapter-plus-face_sdxl_vit-h.safetensors
+    volumes:
+      - comfyui_models:/models
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -e
+        mkdir -p /models/checkpoints /models/clip_vision /models/ipadapter
+        download() {
+          dir="$$1"
+          name="$$2"
+          url="$$3"
+          if [ -f "/models/$${dir}/$${name}" ]; then
+            echo "$${name} already present, skipping download."
+            return 0
+          fi
+          echo "Downloading $${name}..."
+          curl -L --fail -o "/models/$${dir}/$${name}.tmp" "$${url}"
+          mv "/models/$${dir}/$${name}.tmp" "/models/$${dir}/$${name}"
+          echo "Done: $${name}"
+        }
+        download checkpoints "$${LIGHTNING_NAME}" "$${LIGHTNING_URL}"
+        download checkpoints "$${JUGGERNAUT_NAME}" "$${JUGGERNAUT_URL}"
+        download checkpoints "$${REALVISXL_NAME}" "$${REALVISXL_URL}"
+        download clip_vision "$${CLIP_VISION_NAME}" "$${CLIP_VISION_URL}"
+        download ipadapter "$${IPADAPTER_NAME}" "$${IPADAPTER_URL}"
+    restart: "no"
+
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: megatrainer_pgadmin
@@ -95,6 +187,10 @@ services:
 volumes:
   postgres_data:
   ollama_data:
+  comfyui_models:
+  comfyui_output:
+  comfyui_input:
+  media_data:
 
 networks:
   default:

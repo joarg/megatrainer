@@ -71,6 +71,62 @@
       "when": 1787349234931,
       "tag": "0009_rich_scream",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788388756789,
+      "tag": "0010_wise_dragon_lord",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788390634734,
+      "tag": "0011_damp_dagger",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788479862700,
+      "tag": "0012_daily_boomerang",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788737728335,
+      "tag": "0013_sour_doctor_strange",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788739310438,
+      "tag": "0014_talented_captain_universe",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1788739326559,
+      "tag": "0015_numerous_black_tarantula",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788820326131,
+      "tag": "0016_peaceful_mongoose",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788820603001,
+      "tag": "0017_handy_jasper_sitwell",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import type { PageProps } from './$types';
 	import type { App } from '../../../../../../api/src/index';
+	import ProfilePanel from '$lib/components/ProfilePanel.svelte';
 
 	const api = treaty<App>('http://localhost:3000');
 
@@ -26,6 +27,11 @@
 	// currentProfile is only ever updated from /onboarding/message responses below;
 	// there's no way to hydrate it from the server on load (see +page.server.ts).
 	let currentProfile = $state<Record<string, unknown> | null>(null);
+	// Same caveat as currentProfile: phase state only advances from /onboarding/message
+	// responses, so it starts at the first phase on a fresh load.
+	let currentPhase = $state('basicInfo');
+	let onboardingComplete = $state(false);
+	let showProfileOnMobile = $state(false);
 
 	$effect(() => {
 		const stateMessages = (page.state as { initialMessages?: Array<{ role: string; text: string }> })?.initialMessages;
@@ -66,6 +72,8 @@
 
 		conversation = [...conversation, { id: messageCounter++, role: 'assistant', text: result.question ?? '' }];
 		currentProfile = (result.updatedUserProfile as Record<string, unknown>) ?? currentProfile;
+		currentPhase = (result as { phase?: string }).phase ?? currentPhase;
+		onboardingComplete = (result as { onboardingComplete?: boolean }).onboardingComplete ?? onboardingComplete;
 
 		sendStatus = `Message sent in ${Date.now() - startedAt} ms`;
 		userMessage = '';
@@ -105,14 +113,23 @@
 		{/if}
 	</div>
 
-	<aside class="debug-col">
-		<h2>Debug Panel</h2>
+	<aside class="profile-col" class:open={showProfileOnMobile}>
+		<ProfilePanel profile={currentProfile} phase={currentPhase} complete={onboardingComplete} />
 
-		<section class="debug-section">
-			<h3>User Profile</h3>
+		<details class="debug-details">
+			<summary>Debug: raw profile</summary>
 			<pre class="raw">{JSON.stringify(currentProfile, null, 2)}</pre>
-		</section>
+		</details>
 	</aside>
+
+	<button
+		type="button"
+		class="profile-toggle"
+		aria-expanded={showProfileOnMobile}
+		onclick={() => (showProfileOnMobile = !showProfileOnMobile)}
+	>
+		{showProfileOnMobile ? 'Hide your profile' : 'Show your profile'}
+	</button>
 </div>
 
 <style>
@@ -148,11 +165,13 @@
 	}
 
 	.bubble.assistant {
-		background: #f1f5f9;
+		background: #1e293b;
+		color: #f8fafc;
 	}
 
 	.bubble.user {
-		background: #e2e8f0;
+		background: #334155;
+		color: #f8fafc;
 		justify-self: end;
 	}
 
@@ -170,6 +189,8 @@
 	}
 
 	input {
+		background: #f8fafc;
+		color: #0f172a;
 		padding: 0.5rem;
 		font-size: 1rem;
 		border: 1px solid #cbd5e1;
@@ -179,6 +200,17 @@
 	button {
 		padding: 0.5rem 1rem;
 		align-self: flex-start;
+		background: #f0b429;
+		color: #0f172a;
+		border: 1px solid #f0b429;
+		border-radius: 0.375rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	button:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
 	}
 
 	.complete-banner {
@@ -196,64 +228,72 @@
 		margin: 0;
 	}
 
-	.debug-col {
+	.profile-col {
 		position: sticky;
 		top: 1rem;
-		background: #0f172a;
-		color: #e2e8f0;
-		border-radius: 0.5rem;
-		padding: 1rem;
-		font-size: 0.8rem;
 		overflow-y: auto;
 		max-height: calc(100vh - 2rem);
 	}
 
-	.debug-col h2 {
-		margin: 0 0 0.75rem;
-		font-size: 0.9rem;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: #94a3b8;
+	/* The profile panel is the primary sidebar on desktop; on small screens it
+	   collapses behind a toggle so the chat keeps the full viewport. */
+	.profile-toggle {
+		display: none;
 	}
 
-	.debug-section {
-		margin-bottom: 1rem;
-		border-top: 1px solid #1e293b;
-		padding-top: 0.6rem;
-	}
-
-	.debug-section h3 {
-		margin: 0 0 0.4rem;
+	.debug-details {
+		margin-top: 0.75rem;
 		font-size: 0.75rem;
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
 		color: #64748b;
 	}
 
-	.log-entry {
-		margin-bottom: 0.75rem;
-		border-left: 2px solid #1e293b;
-		padding-left: 0.5rem;
-	}
-
-	.log-meta {
-		color: #7dd3fc;
-		font-size: 0.7rem;
-		margin-bottom: 0.25rem;
-	}
-
-	.followup-text {
-		margin: 0;
-		color: #fbbf24;
-		font-style: italic;
+	.debug-details summary {
+		cursor: pointer;
 	}
 
 	.raw {
 		margin: 0;
 		font-size: 0.7rem;
-		color: #64748b;
+		color: #94a3b8;
 		white-space: pre-wrap;
 		word-break: break-all;
 		line-height: 1.4;
+	}
+	@media (max-width: 900px) {
+		.layout {
+			grid-template-columns: 1fr;
+			padding: 0.75rem 0.75rem 4.5rem;
+		}
+
+		.chat-col {
+			order: 1;
+		}
+
+		.profile-col {
+			order: 2;
+			position: static;
+			max-height: none;
+			display: none;
+		}
+
+		.profile-col.open {
+			display: block;
+		}
+
+		.bubble {
+			max-width: 100%;
+		}
+
+		.profile-toggle {
+			display: block;
+			position: fixed;
+			left: 0.75rem;
+			right: 0.75rem;
+			bottom: 0.75rem;
+			z-index: 10;
+			align-self: auto;
+			padding: 0.75rem 1rem;
+			text-align: center;
+		}
 	}
 </style>

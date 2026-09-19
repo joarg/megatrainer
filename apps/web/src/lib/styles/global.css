@@ -1,0 +1,39 @@
+/* Shared design tokens + base styles for the megaTrainer front end.
+   Aesthetic: dark navy canvas, warm gold accent, soft glass panels --
+   matches the trainer "calibration" reference screens. */
+
+:root {
+	--mt-bg: #0b1220;
+	--mt-bg-elevated: #111a2c;
+	--mt-panel: rgba(255, 255, 255, 0.05);
+	--mt-panel-border: rgba(255, 255, 255, 0.1);
+	--mt-text: #e5e9f0;
+	--mt-text-muted: #94a3b8;
+	--mt-gold: #f0b429;
+	--mt-gold-soft: rgba(240, 180, 41, 0.16);
+	--mt-radius: 16px;
+	--mt-font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	background: var(--mt-bg);
+	color: var(--mt-text);
+	font-family: var(--mt-font);
+	-webkit-font-smoothing: antialiased;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+button {
+	font-family: inherit;
+}

@@ -9,6 +9,7 @@ COPY apps/api/src ./src
 COPY apps/api/drizzle.config.ts ./drizzle.config.ts
 COPY apps/api/migrations ./migrations
 COPY coach-engine /coach-engine
+COPY image-engine /image-engine
 
 # Copy startup entrypoint that runs migrate + studio + api
 COPY docker/api-dev-entrypoint.sh /usr/local/bin/api-dev-entrypoint.sh

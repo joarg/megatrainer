@@ -1,0 +1,16 @@
+# ComfyUI image for megatrainer, extending the upstream "slim" build with the
+# IPAdapter Plus custom node (https://github.com/cubiq/ComfyUI_IPAdapter_plus).
+# This is what lets the action-shot workflow condition generation on a
+# trainer's portrait so both images look like the same person. No extra
+# Python dependencies are needed for the non-FaceID variants we use (FaceID
+# would additionally require the insightface package).
+FROM yanwk/comfyui-boot:cu126-slim
+
+# NOTE: this image copies ComfyUI from /default-comfyui-bundle/ComfyUI into
+# /root/ComfyUI at *container start* (not at build time) whenever
+# /root/ComfyUI/main.py is missing — which is always true here since only
+# models/output/input are persistent volumes, not the whole ComfyUI dir. So
+# custom nodes must be added to the bundle path below to survive that copy,
+# not to /root/ComfyUI/custom_nodes directly.
+RUN cd /default-comfyui-bundle/ComfyUI/custom_nodes && \
+    git clone --depth 1 https://github.com/cubiq/ComfyUI_IPAdapter_plus.git

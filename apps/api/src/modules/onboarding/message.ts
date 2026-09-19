@@ -89,6 +89,10 @@ export const messageRoute = new Elysia()
         return {
             question: responseToMessage.response,
             phaseComplete: responseToMessage.nextPhase === null || responseToMessage.nextPhase !== phaseBefore,
+            // The client renders a phase roadmap next to the chat, so it needs to know
+            // which phase the session is on now (and whether onboarding is finished).
+            phase: phaseAfter,
+            onboardingComplete: responseToMessage.nextPhase === null,
             updatedUserProfile: responseToMessage.updatedUserProfile
         };
     }, {
