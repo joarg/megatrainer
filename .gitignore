@@ -4,8 +4,12 @@
 *.swp
 *.swo
 *~
+.env
 .env.local
 .env.*.local
+# Local agent/editor scaffolding, not part of the project.
+.agents/
+.codex/
 dist/
 build/
 node_modules/

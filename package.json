@@ -2,7 +2,7 @@
   "name": "megatrainer-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "AI agent onboarding platform: Bun+Elysia backend, Angular frontend, PostgreSQL, local Docker stack",
+  "description": "Learning project: AI trainer onboarding platform. Bun+Elysia API, SvelteKit frontend, PostgreSQL/Drizzle, local Ollama + ComfyUI inference.",
   "workspaces": [
     "apps/*",
     "packages/*",
@@ -19,10 +19,12 @@
     "docker:up": "docker-compose -f docker-compose.yml up -d",
     "docker:down": "docker-compose -f docker-compose.yml down",
     "docker:logs:api": "docker-compose -f docker-compose.yml logs -f api",
-    "docker:logs:web": "docker-compose -f docker-compose.yml logs -f web",
     "docker:logs": "docker-compose -f docker-compose.yml logs -f",
     "test": "bun test",
-    "lint": "echo 'Linting not yet configured'"
+    "typecheck": "bun run typecheck:api && bun run typecheck:web",
+    "typecheck:api": "cd apps/api && bunx tsc --noEmit -p tsconfig.json",
+    "typecheck:web": "cd apps/web && bun run check",
+    "check": "bun run test && bun run typecheck"
   },
   "devDependencies": {
     "@types/bun": "latest"
