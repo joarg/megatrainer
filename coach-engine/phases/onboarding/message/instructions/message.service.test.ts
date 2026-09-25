@@ -22,7 +22,60 @@ describe('mergeProfiles', () => {
 
         expect(merged.motivations).toEqual(['improve my health']);
         expect(merged.goals).toEqual(['run a 10K']);
+        // Still not written straight into trainingBackground — the guard holds.
         expect(merged.trainingBackground).toEqual([]);
+        // But it is preserved as a note for the classifier to judge, rather than
+        // being silently deleted. A bare echo of the selected sport gets dropped by
+        // the classifier; a real sentence the user actually said gets routed.
+        expect(merged.unclassifiedNotes).toEqual(['running']);
+    });
+
+    test('keeps genuine out-of-phase history volunteered during motivations and goals', () => {
+        // Regression: a real user said "I used to run at school but stopped for years"
+        // while the motivations phase was running. That is genuine evidence, and it
+        // used to be discarded outright — leaving trainingBackground permanently empty
+        // so onboarding could never finish. It must survive as a routable note.
+        const current = {
+            ...createEmptyUser(),
+            name: 'Daniel',
+            age: 29,
+            location: 'Manchester',
+        };
+        const assessment = {
+            ...current,
+            motivations: ['stop feeling winded'],
+            goals: ['run a half marathon'],
+            trainingBackground: ['used to run at school but stopped completely for years'],
+            followUp: null,
+        };
+
+        const merged = mergeProfiles(assessment, current, 'motivationsAndGoals');
+
+        expect(merged.trainingBackground).toEqual([]);
+        expect(merged.unclassifiedNotes).toEqual([
+            'used to run at school but stopped completely for years',
+        ]);
+    });
+
+    test('does not re-salvage an out-of-phase note already held in the profile', () => {
+        // Every turn re-reads the full profile, so without this guard the same note
+        // would be appended again on each subsequent turn and the note list would grow
+        // without bound.
+        const current = {
+            ...createEmptyUser(),
+            name: 'Daniel',
+            unclassifiedNotes: ['used to run at school'],
+            trainingBackground: ['used to run at school'],
+        };
+        const assessment = {
+            ...current,
+            trainingBackground: ['used to run at school'],
+            followUp: null,
+        };
+
+        const merged = mergeProfiles(assessment, current, 'motivationsAndGoals');
+
+        expect(merged.unclassifiedNotes).toEqual(['used to run at school']);
     });
 
     test('preserves out-of-phase user evidence for classifier routing', () => {

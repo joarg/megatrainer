@@ -10,6 +10,22 @@ import { classifyUnclassifiedNotes, applyClassifierUpdate } from './instructions
 
 const MAX_ASSESSMENT_ATTEMPTS = 3;
 
+// The final in-character sign-off, asked for once the phase chain is exhausted. Kept
+// deliberately brief: this is a closing beat, not a chance to re-litigate goals.
+const CLOSING_PROMPT = `Every phase of the onboarding is now complete — the profile in currentUserProfile holds everything we are going to get from this conversation.
+
+Write a short closing message to the user, in your own voice and personality:
+- Wrap up warmly and decisively, like a coach signing off after a first session.
+- Refer naturally to one or two specific things they told you (from the profile), so it reads personal rather than generic.
+- Tell them what happens next and what you now have to work with.
+- Do NOT ask any further questions, and do NOT invent new data.
+- Keep it to a few sentences.`;
+
+// Used only if the closing agent call itself fails. Still in-character copy rather
+// than a sentinel, because whatever we return is shown to the user verbatim.
+const FALLBACK_CLOSING =
+    "That's everything I need. I've got your details logged, and the next step is turning this into a plan you can actually follow. We'll go from here.";
+
 // Keys the assessment agents are contractually required to return. Used only as a
 // sanity check: a model answering in another language sometimes translates the JSON
 // keys themselves ("navn" instead of "name"). That still parses as valid JSON, so
@@ -36,8 +52,15 @@ function hasExpectedAssessmentKeys(parsed: unknown): boolean {
 // (instead of throwing) if every attempt fails, so callers can fall back gracefully.
 async function runAssessment(assessmentInput: OllamaInput, logLabel: string): Promise<User | undefined> {
     for (let attempt = 1; attempt <= MAX_ASSESSMENT_ATTEMPTS; attempt++) {
+        // Held outside the try so the catch can report what the model actually said.
+        // parseJsonFromModelContent only puts the first 120 chars in its SyntaxError,
+        // so without this a parse failure is undiagnosable from the logs — we know it
+        // failed, but not whether the model refused, answered in prose, or emitted a
+        // truncated object.
+        let rawContent: string | undefined;
         try {
             const assessmentMessage = await callOllama(assessmentInput);
+            rawContent = assessmentMessage.content;
             const parsed = parseJsonFromModelContent(assessmentMessage.content);
             if (!hasExpectedAssessmentKeys(parsed)) {
                 throw new Error(
@@ -48,6 +71,9 @@ async function runAssessment(assessmentInput: OllamaInput, logLabel: string): Pr
             return parsed;
         } catch (err) {
             console.log(`Assessment agent (${logLabel}) attempt ${attempt}/${MAX_ASSESSMENT_ATTEMPTS} failed:`, err);
+            if (rawContent !== undefined) {
+                console.log(`  ↳ raw ${logLabel} response (attempt ${attempt}, ${rawContent.length} chars):`, rawContent);
+            }
         }
     }
     return undefined;
@@ -190,8 +216,24 @@ export async function processMessage(input: TurnInput): Promise<ProcessMessageRe
 
         if (!candidatePhase) {
             // We walked off the end of the phase chain with everything already satisfied.
+            // `response` is rendered verbatim as the trainer's next chat bubble, so this
+            // must be real in-character copy — it used to be the literal string
+            // "onboarding complete", which reached the user as a debug sentinel. Ask the
+            // response agent for a sign-off, with a neutral fallback if that call fails
+            // so a finishing turn can never end up blank.
+            let closingText: string;
+            try {
+                const closingInput = getResponseInput(CLOSING_PROMPT, mergedProfile, input);
+                const closing = await callOllama(closingInput);
+                console.log('Response from closing agent :', closing);
+                closingText = closing.content?.trim() || FALLBACK_CLOSING;
+            } catch (err) {
+                console.error('Closing agent failed, using fallback copy:', err);
+                closingText = FALLBACK_CLOSING;
+            }
+
             const responseObjectToReturn = {
-                response: 'onboarding complete',
+                response: closingText,
                 updatedUserProfile: mergedProfile,
                 nextPhase: null,
             };

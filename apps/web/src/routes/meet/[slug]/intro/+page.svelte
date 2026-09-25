@@ -4,6 +4,8 @@
 	import type { PageProps } from './$types';
 	import type { App } from '../../../../../../api/src/index';
 	import ProfilePanel from '$lib/components/ProfilePanel.svelte';
+	import Markdown from '$lib/components/Markdown.svelte';
+	import { uiStrings } from '$lib/i18n/strings';
 	import {
 		phasesWithCopy,
 		PROFILE_PHASES,
@@ -46,16 +48,21 @@
 	const currentPhaseIndex = $derived(
 		Math.max(0, PROFILE_PHASES.findIndex((phase) => phase.key === currentPhase)),
 	);
+	const t = $derived(uiStrings(data.trainer.language));
 	const mobileStatusLabel = $derived(
 		onboardingComplete
-			? 'Onboarding complete'
-			: `Step ${currentPhaseIndex + 1} of ${PROFILE_PHASES.length}: ${onboardingPhases[currentPhaseIndex]?.label ?? 'Onboarding'}`,
+			? t.onboardingComplete
+			: t.stepOfLabel(
+					currentPhaseIndex + 1,
+					PROFILE_PHASES.length,
+					onboardingPhases[currentPhaseIndex]?.label ?? t.onboarding,
+				),
 	);
-	const trainerActivities = [
-		{ label: 'is reading', icon: '👀' },
-		{ label: 'is thinking', icon: '🤔' },
-		{ label: 'is typing', icon: '⌨️' },
-	];
+	const trainerActivities = $derived([
+		{ label: t.isReading, icon: '👀' },
+		{ label: t.isThinking, icon: '🤔' },
+		{ label: t.isTyping, icon: '⌨️' },
+	]);
 	const trainerActivity = $derived(trainerActivities[trainerActivityIndex]);
 
 	$effect(() => {
@@ -203,7 +210,7 @@
 		</span>
 		<span class="status-copy">
 			<span class="status-title">{mobileStatusLabel}</span>
-			<span class="status-action">{showProfileOnMobile ? 'Collapse profile' : 'View profile'}</span>
+			<span class="status-action">{showProfileOnMobile ? t.collapseProfile : t.viewProfile}</span>
 		</span>
 		<span class="status-chevron" aria-hidden="true">{showProfileOnMobile ? '▲' : '▼'}</span>
 	</button>
@@ -227,15 +234,15 @@
 									</span>
 								{/if}
 							{/if}
-							<strong>{message.role === 'assistant' ? data.trainer.name : message.role === 'manager' ? 'Manager' : 'You'}</strong>
+							<strong>{message.role === 'assistant' ? data.trainer.name : message.role === 'manager' ? t.speakerManager : t.speakerYou}</strong>
 						</div>
-						<p>{message.text}</p>
+						<Markdown text={message.text} />
 					</article>
 					{#if message.role === 'assistant' && message.askedFor && message.askedFor.length > 0}
 						<aside
 							class="request-summary"
 							class:evaluating={message.requestState === 'evaluating'}
-							aria-label="Trainer request summary"
+							aria-label={t.requestSummary}
 						>
 							{#if message.requestState === 'evaluating'}
 								<span class="request-status">
@@ -244,7 +251,7 @@
 									{data.trainer.name} {trainerActivity.label}...
 								</span>
 							{:else}
-								<span class="trainer-name">{data.trainer.name} asks for</span>
+								<span class="trainer-name">{data.trainer.name} {t.asksFor}</span>
 								<span class="summary-icon" aria-hidden="true">✦</span>
 							{/if}
 							<ul>
@@ -262,15 +269,15 @@
 		{/if}
 
 		<form onsubmit={onMessageSubmit}>
-			<label for="user-message">Your message</label>
+			<label for="user-message">{t.yourMessage}</label>
 			<input
 				id="user-message"
 				type="text"
 				bind:value={userMessage}
-				placeholder="Type your message..."
+				placeholder={t.typeYourMessage}
 				autocomplete="off"
 			/>
-			<button type="submit" disabled={!userMessage.trim() || isSending}>Send</button>
+			<button type="submit" disabled={!userMessage.trim() || isSending}>{t.send}</button>
 		</form>
 
 		{#if sendStatus}
@@ -282,7 +289,7 @@
 		<button
 			type="button"
 			class="profile-backdrop"
-			aria-label="Collapse profile"
+			aria-label={t.collapseProfile}
 			onclick={() => (showProfileOnMobile = false)}
 		></button>
 	{/if}
@@ -294,10 +301,11 @@
 			complete={onboardingComplete}
 			copy={data.trainer.panelCopy}
 			awaitingReply={isSending}
+			language={data.trainer.language}
 		/>
 
 		<details class="debug-details">
-			<summary>Debug: raw profile</summary>
+			<summary>{t.debugRawProfile}</summary>
 			<pre class="raw">{JSON.stringify(currentProfile, null, 2)}</pre>
 		</details>
 	</aside>
@@ -343,10 +351,10 @@
 		justify-self: end;
 	}
 
-	.bubble p {
-		margin: 0.25rem 0 0;
-		white-space: pre-wrap;
-		word-break: break-word;
+	/* Message text is rendered by the Markdown component, which owns its own
+	   paragraph styling (Svelte's scoped CSS cannot reach into a child component). */
+	.bubble :global(.md) {
+		margin-top: 0.25rem;
 	}
 
 	.message-head {

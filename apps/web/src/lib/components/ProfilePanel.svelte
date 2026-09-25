@@ -16,6 +16,7 @@
 		type ProfileValue,
 		type OnboardingPhase,
 	} from '$lib/onboarding/profile';
+	import { uiStrings } from '$lib/i18n/strings';
 
 	let {
 		profile = null,
@@ -23,13 +24,23 @@
 		complete = false,
 		copy = null,
 		awaitingReply = false,
+		language = null,
 	}: {
 		profile?: Profile;
 		phase?: string;
 		complete?: boolean;
 		copy?: PanelCopy | null;
 		awaitingReply?: boolean;
+		// The trainer's free-text language, so this panel's own chrome ("Your profile",
+		// "Complete") matches the language their generated copy is already in. Optional,
+		// and defaults to English — which is what an unset trainer language means.
+		language?: string | null;
 	} = $props();
+
+	// Product chrome, translated deterministically. The phase/field wording comes from
+	// the trainer's generated copy instead (see phasesWithCopy below); only the
+	// surrounding labels are looked up here.
+	const t = $derived(uiStrings(language));
 
 	// Overlay the trainer's wording onto the structural phase table, matched by key.
 	// Anything missing (no copy at all, an unknown key, a blank string) keeps the
@@ -115,11 +126,18 @@
 		return () => clearTimeout(timer);
 	});
 
-	function phaseStatus(index: number): 'done' | 'current' | 'upcoming' {
-		if (complete) return 'done';
-		if (index < phaseIndex) return 'done';
-		if (index === phaseIndex) return 'current';
-		return 'upcoming';
+	// A phase is only genuinely 'done' if it actually collected every field it owns.
+	// The engine can force-advance past a phase the user never finished answering (see
+	// the give-up path in coach-engine/.../message/index.ts), and on completion every
+	// phase used to be marked 'done' unconditionally — which rendered "Complete" with a
+	// green tick next to a profile whose age and location were still null. 'skipped'
+	// reports that honestly: we moved past it, and some of it is missing.
+	function phaseStatus(index: number): 'done' | 'skipped' | 'current' | 'upcoming' {
+		const phase = phases[index];
+		const satisfied = (phase?.fields ?? []).every((f) => filledKeys.has(f.key));
+		const behindUs = complete || index < phaseIndex;
+		if (behindUs) return satisfied ? 'done' : 'skipped';
+		return index === phaseIndex ? 'current' : 'upcoming';
 	}
 
 	function toggle(key: string) {
@@ -129,9 +147,9 @@
 
 <section class="panel" aria-label="Your profile">
 	<header class="panel-head">
-		<h2>Your profile</h2>
+		<h2>{t.yourProfile}</h2>
 		<p class="progress-label">
-			{complete ? 'Onboarding complete' : `Step ${phaseIndex + 1} of ${PROFILE_PHASES.length}`}
+			{complete ? t.onboardingComplete : t.stepOf(phaseIndex + 1, PROFILE_PHASES.length)}
 		</p>
 	</header>
 
@@ -154,12 +172,18 @@
 							{p.label}
 							{#if addedHere}
 								{#key flashToken}
-									<span class="badge">+{p.fields.filter((f) => justAdded.has(f.key)).length} logged</span>
+									<span class="badge">{t.logged(p.fields.filter((f) => justAdded.has(f.key)).length)}</span>
 								{/key}
 							{/if}
 						</span>
 						<span class="phase-blurb">
-							{status === 'current' ? 'In progress' : status === 'done' ? 'Complete' : p.blurb}
+							{status === 'current'
+								? t.inProgress
+								: status === 'done'
+									? t.complete
+									: status === 'skipped'
+										? t.movedOnMissing
+										: p.blurb}
 						</span>
 					</span>
 					<span class="chevron" aria-hidden="true">▾</span>
@@ -181,7 +205,7 @@
 									<span class="field-body">
 										<span class="field-label">{field.label}</span>
 										<span class="field-value">
-											{filled ? display(profile?.[field.key]) : awaitingReply ? 'Evaluating input' : 'Awaiting info'}
+											{filled ? display(profile?.[field.key]) : awaitingReply ? t.evaluatingInput : t.awaitingInfo}
 										</span>
 									</span>
 									{#if filled}<span class="check" aria-hidden="true">✓</span>{/if}
@@ -195,9 +219,7 @@
 	</ol>
 
 	<p class="sr-only" aria-live="polite">
-		{justAdded.size > 0
-			? `${justAdded.size} new detail${justAdded.size === 1 ? '' : 's'} added to your profile`
-			: ''}
+		{justAdded.size > 0 ? t.newDetails(justAdded.size) : ''}
 	</p>
 </section>
 
@@ -258,6 +280,21 @@
 
 	.phase.upcoming {
 		opacity: 0.6;
+	}
+
+	/* Moved past without collecting every field. Visually distinct from .done: a
+	   dashed, muted outline and a number rather than a gold ✓, so an incomplete
+	   phase never reads as a finished one. */
+	.phase.skipped {
+		border-style: dashed;
+		border-color: rgba(148, 163, 184, 0.4);
+		opacity: 0.85;
+	}
+
+	.phase.skipped .dot {
+		background: transparent;
+		border: 1px dashed rgba(148, 163, 184, 0.65);
+		color: var(--mt-text-muted, #94a3b8);
 	}
 
 	.phase-head {
