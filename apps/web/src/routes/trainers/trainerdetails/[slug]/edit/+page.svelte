@@ -17,6 +17,7 @@
 	let tagline = $state(untrack(() => data.trainer.tagline ?? ''));
 	let initialGreeting = $state(untrack(() => data.trainer.initialGreeting ?? ''));
 	let personality = $state(untrack(() => data.trainer.personality ?? ''));
+	let language = $state(untrack(() => data.trainer.language ?? ''));
 	let portraitPrompt = $state(untrack(() => data.trainer.portraitPrompt ?? ''));
 	let actionShotPrompt = $state(untrack(() => data.trainer.actionShotPrompt ?? ''));
 
@@ -32,7 +33,8 @@
 		const { error } = await api.trainers({ slug: data.trainer.slug }).patch({
 			tagline: tagline.trim(),
 			initialGreeting: initialGreeting.trim(),
-			personality: personality.trim()
+			personality: personality.trim(),
+			language: language.trim()
 		});
 
 		if (error) {
@@ -105,6 +107,10 @@
 		<label>
 			Personality
 			<textarea bind:value={personality} rows="4" placeholder="Personality"></textarea>
+		</label>
+		<label>
+			Language
+			<input bind:value={language} placeholder="Language the trainer speaks (e.g. Norwegian). Leave blank for English." />
 		</label>
 		<button onclick={saveText}>Save changes</button>
 		{#if textStatus}

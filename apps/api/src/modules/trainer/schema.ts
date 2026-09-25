@@ -8,6 +8,9 @@ export const createTrainerInputSchema = t.Object({
   slug: t.String({ minLength: 1 }),
   worldId: t.Number(),
   tagline: t.String({ minLength: 1 }),
+  // Plain human-readable language name ("Norwegian"). Optional: omitted means
+  // English, the language all coach-engine prompts are written in.
+  language: t.Optional(t.String()),
   // Freeform descriptions of the desired portrait/action shot. Each is
   // optional: falls back to a prompt built from name/personality/sports when
   // omitted. Kept separate since the two images have different framing needs
@@ -23,6 +26,7 @@ export const updateTrainerInputSchema = t.Object({
   tagline: t.Optional(t.String({ minLength: 1 })),
   initialGreeting: t.Optional(t.String({ minLength: 1 })),
   personality: t.Optional(t.String({ minLength: 1 })),
+  language: t.Optional(t.String()),
 });
 
 // Regenerating images is a separate action from the text edit above since it

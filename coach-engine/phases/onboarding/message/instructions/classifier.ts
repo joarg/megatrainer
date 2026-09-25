@@ -21,7 +21,7 @@ You receive:
 Your ONLY job: for each note, decide which of these fields it genuinely belongs to, and return the NEW items that should be added there:
 - trainingBackground: history/experience with the sport (e.g. "running for 3 years", "started training in 2022")
 - performanceMetrics: concrete measurable numbers about current ability (pace, distance, time, PRs)
-- injuries: physical injuries or limitations. "No"/"none"/"nothing" style statements about injuries count as real information — store them as ["none reported"], but only when the note itself actually says so.
+- injuries: physical injuries or limitations. "No"/"none"/"nothing" style statements about injuries count as real information — store them as a single item meaning "none reported" (written in the same language as the rest of the profile), but only when the note itself actually says so.
 - motivations: emotional/underlying reasons for training
 - goals: concrete outcomes the user wants to achieve
 - equipmentAndSchedule: equipment/facilities they have access to, or training time/days per week
@@ -35,6 +35,7 @@ CRITICAL RULES:
 - Do not return name, age, gender, genderNotes, location, country, followUp, or pendingQsAndComments — leave those out of your response entirely.
 
 Return ONLY a JSON object with exactly these keys (all string arrays, possibly empty):
+The JSON keys below are identifiers — always write them exactly as shown here, in English, even when the conversation is in another language. Only the VALUES are written in the user's language.
 {
   "trainingBackground": string[],
   "performanceMetrics": string[],
@@ -54,12 +55,14 @@ function toStringArray(value: unknown): string[] {
 // place and simply retry on a later turn rather than losing them.
 export async function classifyUnclassifiedNotes(
 	notes: string[],
-	currentProfile: User
+	currentProfile: User,
+	language?: string
 ): Promise<ClassifierUpdate | undefined> {
 	if (notes.length === 0) return undefined;
 
 	const input: OllamaInput = {
 		personality: 'neutral and concise, output is JSON only',
+		language,
 		prompt: CLASSIFIER_PROMPT,
 		userMessage: `Unclassified notes to route:\n${notes.map((note, i) => `${i + 1}. ${note}`).join('\n')}`,
 		currentUserProfile: currentProfile,

@@ -18,6 +18,7 @@ OUT-OF-SCOPE INFO: If the user's message contains other genuinely new informatio
 IMPORTANT: The previous message shown to you (role "assistant") is YOUR OWN prior question to the user, not something the user asked. Never copy or paraphrase it into pendingQsAndComments. Only add to pendingQsAndComments if the user's own latest message itself contains a genuine question or comment directed at you.
 If the user has any questions then add it to pendingQsAndComments with a note that it is a user question. Rephrase it so that its correct and complete in its form.
 Return the FULL profile JSON with these exact keys, remember to set the followUp field to null if the profile is complete. 
+The JSON keys below, and the field keys used in followUp, are identifiers — always write them exactly as shown here, in English, even when the conversation is in another language. Only the VALUES are written in the user's language.
 {
   "name": string|null,
   "age": number|null,

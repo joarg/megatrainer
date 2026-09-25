@@ -15,6 +15,7 @@ let { data } = $props();
   let slug = $state('');
   let worldId = $state('');
   let tagline = $state('');
+  let language = $state('');
   let portraitPrompt = $state('');
   let actionShotPrompt = $state('');
   let status = $state('');
@@ -44,6 +45,7 @@ let { data } = $props();
       slug: normalizedSlug,
       worldId: Number(worldId),
       tagline: tagline.trim(),
+      language: language.trim(),
       portraitPrompt: portraitPrompt.trim(),
       actionShotPrompt: actionShotPrompt.trim(),
     });
@@ -62,6 +64,7 @@ let { data } = $props();
   <input bind:value={sports} placeholder="Sports (comma separated)" required>
   <input bind:value={slug} placeholder="Slug" required>
   <input bind:value={tagline} placeholder="Tagline (short specialty line)" required>
+  <input bind:value={language} placeholder="Language the trainer speaks (e.g. Norwegian) — leave blank for English">
 
   <select bind:value={worldId} required>
     <option value="" disabled>Choose a world</option>

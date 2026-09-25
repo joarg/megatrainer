@@ -31,11 +31,29 @@ export function parseJsonFromModelContent(content: string) {
   }
 }
 
+function buildLanguageInstruction(language: string | undefined): string | false {
+  const trimmed = language?.trim();
+  if (!trimmed) return false;
+  // English is the default the prompts are already written in, so there is
+  // nothing to instruct — skip it rather than spending tokens saying "use English".
+  if (/^(en|eng|english)$/i.test(trimmed)) return false;
+
+  return [
+    `language: ${trimmed}`,
+    `Write every word addressed to the user in ${trimmed}, regardless of which language the user writes in. Stay in ${trimmed} for the whole conversation.`,
+    // Without this, a model told to answer in Norwegian will happily translate the
+    // JSON keys too ("navn" instead of "name"). That parses fine but silently drops
+    // every extracted field on the floor during the merge, so it must be explicit.
+    `If your output is JSON, the JSON keys must stay EXACTLY as specified in the instructions (in English). Never translate, rename or localise a JSON key. Only the values are written in ${trimmed}.`,
+  ].join('\n');
+}
+
 function buildSystemPrompt(input: OllamaInput): string {
   return [
     `<|think|>\n${SYSTEM_INSTRUCTION}`,
     `personality: ${input.personality}`,
     input.trainerName && `trainerName: ${input.trainerName}\nKeep this exact trainer name in all responses. Never invent or change your name.`,
+    buildLanguageInstruction(input.language),
     `instructions: ${input.prompt}`,
     input.selectedSport?.length && `selectedSport: ${input.selectedSport.join(', ')}`,  
     input.currentUserProfile && `currentUserProfile: ${JSON.stringify(input.currentUserProfile, null, 2)}`,

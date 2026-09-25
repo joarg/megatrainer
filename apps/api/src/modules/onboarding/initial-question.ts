@@ -8,11 +8,18 @@ export const initialQuestionRoute = new Elysia()
     .post("/initial-question", async ({ body, set }) => {
         const { sessionId, claimToken } = body;
 
-        // Verify session and claim token
+        // Verify session and claim token. The token has to be part of the lookup itself,
+        // not merely present in the body: sessionId is a serial, so it is enumerable and
+        // guessable. Filtering on the id alone let anyone who guessed a valid sessionId
+        // read that session's trainer and overwrite its first question, without ever
+        // knowing the unguessable claim token. Mirrors the check in message.ts.
         let session = await db.select()
             .from(onboardingSessionsTable)
             .where(
-                eq(onboardingSessionsTable.id, sessionId),
+                and(
+                    eq(onboardingSessionsTable.id, sessionId),
+                    eq(onboardingSessionsTable.claimToken, claimToken),
+                ),
             )
             .limit(1);
 
@@ -32,6 +39,7 @@ export const initialQuestionRoute = new Elysia()
         const firstQuestion = await generateFirstQuestion({
             personality: trainer[0].personality,
             trainerName: trainer[0].name,
+            language: trainer[0].language ?? undefined,
             selectedSport: session[0].selectedSport == null ? undefined : session[0].selectedSport,
             lastAssistantMessage: session[0].lastAssistantMessage ?? '',
             userMessage: '',

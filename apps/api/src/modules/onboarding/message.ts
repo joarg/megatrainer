@@ -53,6 +53,7 @@ export const messageRoute = new Elysia()
                 currentUserProfile: sessionData.userprofile as User,
                 selectedSport: sessionData.selectedSport ?? undefined,
                 trainerName: trainer.name || undefined,
+                language: trainer.language ?? undefined,
             });
         } catch (err) {
             // Guard against any unexpected failure (e.g. a transient LLM/network error) so the
@@ -63,6 +64,14 @@ export const messageRoute = new Elysia()
             return { error: "Something went wrong generating a response. Please try again." };
         }
 
+        // A null nextPhase means the engine walked off the end of the phase chain with
+        // every field satisfied, i.e. onboarding is finished. `phase` deliberately stays
+        // pinned to the last real phase rather than being nulled: the client renders a
+        // roadmap from it, and nulling it would make a later turn fall back to
+        // 'basicInfo' via the `?? 'basicInfo'` above. completedAt is what actually
+        // records that the session finished — it was previously never written at all,
+        // which left completed sessions indistinguishable from in-progress ones.
+        const onboardingFinished = responseToMessage.nextPhase === null;
         const phaseAfter = responseToMessage.nextPhase ?? phaseBefore;
 
         // Store the full finalized turn for debugging.
@@ -82,6 +91,10 @@ export const messageRoute = new Elysia()
                 phase: phaseAfter,
                 phaseAttempts: phaseAfter !== phaseBefore ? 0 : (sessionData.phaseAttempts || 0) + 1,
                 chatHistory: [...(sessionData.chatHistory ?? []), newChatHistoryEntry],
+                // `undefined` tells Drizzle to leave the column untouched, so a session
+                // that already completed keeps its original timestamp if the user keeps
+                // chatting afterwards, instead of having it bumped on every later turn.
+                completedAt: sessionData.completedAt ?? (onboardingFinished ? new Date() : undefined),
             })
             .where(eq(onboardingSessionsTable.id, sessionId));
 
@@ -92,7 +105,7 @@ export const messageRoute = new Elysia()
             // The client renders a phase roadmap next to the chat, so it needs to know
             // which phase the session is on now (and whether onboarding is finished).
             phase: phaseAfter,
-            onboardingComplete: responseToMessage.nextPhase === null,
+            onboardingComplete: onboardingFinished,
             updatedUserProfile: responseToMessage.updatedUserProfile
         };
     }, {

@@ -1,79 +1,43 @@
 <script lang="ts">
 	/**
 	 * User-facing view of the profile the trainer is building during onboarding.
-	 * Two jobs: show what has already been captured (with a flash when something
-	 * new lands, so the user sees their answer being "logged"), and show which
-	 * phases are done / current / still coming so the flow feels finite.
+	 * Three jobs: show what has already been captured (with a flash when something
+	 * new lands, so the user sees their answer being "logged"), show which phases
+	 * are done / current / still coming so the flow feels finite, and make the
+	 * captured details easy to review.
 	 */
 	import { untrack } from 'svelte';
-
-	type ProfileValue = unknown;
-	type Profile = Record<string, ProfileValue> | null;
-
-	type Phase = {
-		key: string;
-		label: string;
-		blurb: string;
-		fields: { key: string; label: string; icon: string }[];
-	};
-
-	// Mirrors ownedFieldsForPhase / promptObject.ts in coach-engine: each phase owns
-	// exactly the fields listed here, in the order the trainer asks about them.
-	const PHASES: Phase[] = [
-		{
-			key: 'basicInfo',
-			label: 'Identification basics',
-			blurb: 'Who you are and where you train',
-			fields: [
-				{ key: 'name', label: 'Name', icon: '🧍' },
-				{ key: 'age', label: 'Age', icon: '📅' },
-				{ key: 'location', label: 'Location', icon: '📍' },
-			],
-		},
-		{
-			key: 'motivationsAndGoals',
-			label: 'Objectives',
-			blurb: 'Why you train and what you are chasing',
-			fields: [
-				{ key: 'motivations', label: 'Motivations', icon: '🔥' },
-				{ key: 'goals', label: 'Goals', icon: '🎯' },
-			],
-		},
-		{
-			key: 'backgroundAndMetrics',
-			label: 'Background & metrics',
-			blurb: 'Your history, numbers and injuries',
-			fields: [
-				{ key: 'trainingBackground', label: 'Training background', icon: '📓' },
-				{ key: 'performanceMetrics', label: 'Performance metrics', icon: '📈' },
-				{ key: 'injuries', label: 'Injuries', icon: '🩹' },
-			],
-		},
-		{
-			key: 'toolsAndTime',
-			label: 'Tools & time',
-			blurb: 'Equipment and the hours you can commit',
-			fields: [{ key: 'equipmentAndSchedule', label: 'Equipment & schedule', icon: '🛠️' }],
-		},
-	];
+	import {
+		isProfileValueFilled,
+		phasesWithCopy,
+		PROFILE_PHASES,
+		type PanelCopy,
+		type Profile,
+		type ProfileValue,
+		type OnboardingPhase,
+	} from '$lib/onboarding/profile';
 
 	let {
 		profile = null,
 		phase = 'basicInfo',
 		complete = false,
-	}: { profile?: Profile; phase?: string; complete?: boolean } = $props();
+		copy = null,
+		awaitingReply = false,
+	}: {
+		profile?: Profile;
+		phase?: string;
+		complete?: boolean;
+		copy?: PanelCopy | null;
+		awaitingReply?: boolean;
+	} = $props();
 
-	const ALL_FIELDS = PHASES.flatMap((p) => p.fields);
+	// Overlay the trainer's wording onto the structural phase table, matched by key.
+	// Anything missing (no copy at all, an unknown key, a blank string) keeps the
+	// English default, so a partial or absent generation degrades one label at a time
+	// instead of emptying the panel.
+	const phases = $derived.by((): OnboardingPhase[] => phasesWithCopy(copy));
 
-	function isFilled(value: ProfileValue): boolean {
-		if (value === null || value === undefined) return false;
-		// The assessment agent sometimes fills an "empty" array field with a single
-		// blank-string placeholder (e.g. injuries: [""]) rather than []. Only count an
-		// array as filled if it has at least one real (non-blank) entry.
-		if (Array.isArray(value)) return value.some((v) => typeof v !== 'string' || v.trim().length > 0);
-		if (typeof value === 'string') return value.trim().length > 0;
-		return true;
-	}
+	const ALL_FIELDS = PROFILE_PHASES.flatMap((p) => p.fields);
 
 	function display(value: ProfileValue): string {
 		if (Array.isArray(value)) return value.filter((v) => typeof v !== 'string' || v.trim().length > 0).join(' · ');
@@ -89,9 +53,9 @@
 	let highlightTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const filledKeys = $derived(
-		new Set(ALL_FIELDS.filter((f) => isFilled(profile?.[f.key])).map((f) => f.key)),
+		new Set(ALL_FIELDS.filter((f) => isProfileValueFilled(profile?.[f.key])).map((f) => f.key)),
 	);
-	const phaseIndex = $derived(Math.max(0, PHASES.findIndex((p) => p.key === phase)));
+	const phaseIndex = $derived(Math.max(0, PROFILE_PHASES.findIndex((p) => p.key === phase)));
 
 	// Which phase's questions/answers are expanded. Defaults to whatever phase is
 	// currently active; the user may expand any other phase to review past answers.
@@ -167,12 +131,12 @@
 	<header class="panel-head">
 		<h2>Your profile</h2>
 		<p class="progress-label">
-			{complete ? 'Onboarding complete' : `Step ${phaseIndex + 1} of ${PHASES.length}`}
+			{complete ? 'Onboarding complete' : `Step ${phaseIndex + 1} of ${PROFILE_PHASES.length}`}
 		</p>
 	</header>
 
 	<ol class="outline">
-		{#each PHASES as p, i (p.key)}
+		{#each phases as p, i (p.key)}
 			{@const status = phaseStatus(i)}
 			{@const isExpanded = expandedKey === p.key}
 			{@const addedHere = justAdded.size > 0 && p.fields.some((f) => justAdded.has(f.key))}
@@ -206,12 +170,18 @@
 						<ul class="fields">
 							{#each p.fields as field (field.key)}
 								{@const filled = filledKeys.has(field.key)}
-								<li class="field" class:filled class:flash={justAdded.has(field.key)}>
+								{@const wanted = !filled && status === 'current' && !complete}
+								<li
+									class="field"
+									class:filled
+									class:wanted
+									class:flash={justAdded.has(field.key)}
+								>
 									<span class="icon" aria-hidden="true">{field.icon}</span>
 									<span class="field-body">
 										<span class="field-label">{field.label}</span>
 										<span class="field-value">
-											{filled ? display(profile?.[field.key]) : 'Awaiting info'}
+											{filled ? display(profile?.[field.key]) : awaitingReply ? 'Evaluating input' : 'Awaiting info'}
 										</span>
 									</span>
 									{#if filled}<span class="check" aria-hidden="true">✓</span>{/if}
@@ -421,6 +391,16 @@
 		color: var(--mt-text, #e5e9f0);
 	}
 
+	/* A field the trainer is waiting on right now. Deliberately a cooler/steadier
+	   treatment than .filled's gold so "still needed" and "already captured" never
+	   read as the same state. */
+	.field.wanted {
+		border-color: rgba(125, 211, 252, 0.5);
+		background: rgba(125, 211, 252, 0.08);
+		color: var(--mt-text, #e5e9f0);
+		animation: wanted-pulse 2.4s ease-in-out infinite;
+	}
+
 	.field.flash {
 		animation: intel-flash 1.6s ease-out;
 	}
@@ -482,6 +462,16 @@
 		}
 	}
 
+	@keyframes wanted-pulse {
+		0%,
+		100% {
+			box-shadow: 0 0 0 0 rgba(125, 211, 252, 0);
+		}
+		50% {
+			box-shadow: 0 0 12px 1px rgba(125, 211, 252, 0.35);
+		}
+	}
+
 	@keyframes pop {
 		0% {
 			opacity: 0;
@@ -501,6 +491,7 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		.field.flash,
+		.field.wanted,
 		.badge,
 		.phase-panel {
 			animation: none;

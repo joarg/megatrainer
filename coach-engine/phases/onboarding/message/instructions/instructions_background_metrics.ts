@@ -42,13 +42,14 @@ PERFORMANCE METRICS are concrete, measurable numbers about their current ability
 For the followUp field: base "missing" on whether the user's messages so far actually cover trainingBackground, performanceMetrics, and injuries with real substance — not merely on whether the array happens to be non-empty. Return either null or a comma-separated list of missing field keys from [trainingBackground, performanceMetrics, injuries].
 Use exact field keys only, no extra prose. Example: "trainingBackground,injuries".
 If no fields are missing, set followUp to null.
-"No" or "nothing" are valid answers to injuries, but ONLY if the user's own latest message actually says so — in that case store ["none reported"] and do NOT include injuries in followUp. Never assume "no injuries" when the user hasn't actually said anything about injuries.
+"No" or "nothing" are valid answers to injuries, but ONLY if the user's own latest message actually says so — in that case store a single item meaning "none reported" (written in the same language as the rest of the profile) and do NOT include injuries in followUp. Never assume "no injuries" when the user hasn't actually said anything about injuries.
 
 OUT-OF-SCOPE INFO: If the user's message contains other genuinely new information that belongs to a different phase (e.g. equipment/facilities they have access to, or training time/days per week) — do NOT guess which specific field it belongs to, and do NOT write it into trainingBackground or equipmentAndSchedule yourself. Instead, copy the user's exact relevant wording (one topic per entry) as a new item into unclassifiedNotes. A dedicated later step will route each note to the correct field. Configuration such as selectedSport is context, not a statement from the user, and must never be copied into the profile or unclassifiedNotes.
 
 IMPORTANT: The previous message shown to you (role "assistant") is YOUR OWN prior question to the user, not something the user asked. Never copy or paraphrase it into pendingQsAndComments. Only add to pendingQsAndComments if the user's own latest message itself contains a genuine question or comment directed at you.
 If the user has any questions then add it to pendingQsAndComments with a note that it is a user question. Rephrase it so that its correct and complete in its form.
 Return the FULL profile JSON with these exact keys:
+The JSON keys below, and the field keys used in followUp, are identifiers — always write them exactly as shown here, in English, even when the conversation is in another language. Only the VALUES are written in the user's language.
 {
   "name": string|null,
   "age": number|null,

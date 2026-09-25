@@ -1,5 +1,5 @@
 import { callOllama } from '../../../services/ollama.service.js';
-import type { OllamaInput } from '../../../types/types.js';
+import type { GenerationInput } from '../../../types/types.js';
 import { GREETING_PROMPT } from './instructions_greeting.js';
 
 /**
@@ -7,10 +7,11 @@ import { GREETING_PROMPT } from './instructions_greeting.js';
  * The result is stored in the DB and sent to the frontend before the
  * conversation begins — it is NOT part of the runtime phase loop.
  */
-export async function generateGreeting(input: OllamaInput): Promise<string> {
+export async function generateGreeting(input: GenerationInput): Promise<string> {
 	const response = await callOllama({
 		personality: input.personality,
 		trainerName: input.trainerName,
+		language: input.language,
 		selectedSport: input.selectedSport,
 		prompt: GREETING_PROMPT,
 		userMessage: '',

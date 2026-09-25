@@ -1,4 +1,5 @@
 import * as p from "drizzle-orm/pg-core";
+import type { PanelPhaseCopy } from "../../../coach-engine/index.js";
 
 // Themed trainer collections (e.g. "Macho World"). Previously a frontend-only
 // hardcoded list; now a real table so trainers can be assigned a world at
@@ -35,6 +36,18 @@ export const trainerTable = p.pgTable("trainers", {
     // new trainers are expected to always set these at creation time.
     worldId: p.integer().references(() => worldTable.id, { onDelete: "set null" }),
     tagline: p.text(),
+    // Language this trainer speaks to the user in, as a plain human-readable name
+    // ("Norwegian", "Spanish"). Nullable/unset means English, which is what all the
+    // prompts are written in. Stored explicitly rather than inferred from
+    // `personality` prose so every generated surface (greeting, onboarding turns,
+    // profile panel copy) agrees on one language instead of drifting with whatever
+    // the user's last message happened to be — see coach-engine/services/ollama.service.ts.
+    language: p.text(),
+    // Trainer-voiced wording for the onboarding profile panel, generated once at
+    // creation time (see coach-engine/phases/onboarding/panel_copy). Only the wording
+    // lives here — the phases, fields and their order are structural and defined in
+    // code. Nullable: trainers without it fall back to the panel's English defaults.
+    panelCopy: p.jsonb().$type<PanelPhaseCopy[]>(),
     // Freeform prompts behind the trainer's current portrait and action shot.
     // Kept separate (rather than one shared prompt) since the two images have
     // very different framing needs — see image-engine/portrait.ts. Persisted

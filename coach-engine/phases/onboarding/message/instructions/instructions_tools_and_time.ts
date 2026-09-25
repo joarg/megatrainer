@@ -22,6 +22,7 @@ If the user has any questions then add it to pendingQsAndComments with a note th
 NEVER add internal observations, missing-field notes, or follow-up reminders to pendingQsAndComments — use the followUp field for those.
 pendingQsAndComments is ONLY for questions the user themselves asked.
 Return the FULL profile JSON with these exact keys:
+The JSON keys below, and the field keys used in followUp, are identifiers — always write them exactly as shown here, in English, even when the conversation is in another language. Only the VALUES are written in the user's language.
 {
   "name": string|null,
   "age": number|null,

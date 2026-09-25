@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { generateGreeting } from "../../../../../coach-engine/index.js";
+import { generateGreeting, generatePanelCopy } from "../../../../../coach-engine/index.js";
 import { generateTrainerActionShot, generateTrainerPortrait } from "../../../../../image-engine/index.js";
 import { trainerMediaTable, trainerTable, worldTable } from "../../schema";
 import { db } from "../../db";
@@ -145,12 +145,24 @@ export const trainerModule = new Elysia({ prefix: "/trainers" })
         return { error: "Unknown worldId" };
       }
 
-      const initialGreeting = await generateGreeting({
+      const language = body.language?.trim() || undefined;
+
+      const generationInput = {
         personality: body.personality,
         trainerName: body.name,
+        language,
         selectedSport: sports.length > 0 ? sports : undefined,
         userMessage: '',
-      });
+      };
+
+      // Both are independent one-shot generations, so run them together rather than
+      // adding a second serial LLM round-trip to trainer creation. Panel copy is
+      // allowed to fail (undefined) — the UI falls back to its English defaults — so a
+      // hiccup there must not block creating the trainer.
+      const [initialGreeting, panelCopy] = await Promise.all([
+        generateGreeting(generationInput),
+        generatePanelCopy(generationInput),
+      ]);
 
       const inserted = await db
         .insert(trainerTable)
@@ -162,6 +174,8 @@ export const trainerModule = new Elysia({ prefix: "/trainers" })
           initialGreeting,
           worldId: body.worldId,
           tagline: body.tagline,
+          language: language ?? null,
+          panelCopy: panelCopy ?? null,
           portraitPrompt: body.portraitPrompt,
           actionShotPrompt: body.actionShotPrompt,
         })
@@ -199,9 +213,19 @@ export const trainerModule = new Elysia({ prefix: "/trainers" })
   .patch(
     "/:slug",
     async ({ params, body, set }) => {
+      // Clearing the language field in the edit form sends "", which should mean
+      // "no language pinned" (i.e. English) rather than an empty-string language.
+      // Normalise it to null so the column holds exactly one representation of
+      // "unset" — see coach-engine/services/ollama.service.ts, which skips the
+      // language instruction entirely for blank/English values.
+      const patch = {
+        ...body,
+        ...(body.language !== undefined ? { language: body.language.trim() || null } : {}),
+      };
+
       const updated = await db
         .update(trainerTable)
-        .set(body)
+        .set(patch)
         .where(eq(trainerTable.slug, params.slug))
         .returning();
 
@@ -215,6 +239,48 @@ export const trainerModule = new Elysia({ prefix: "/trainers" })
     },
     {
       body: updateTrainerInputSchema,
+    }
+  )
+  // Re-rolls the profile panel wording for an existing trainer. Needed because panel
+  // copy is generated once at creation: editing a trainer's language or personality
+  // afterwards would otherwise leave the panel speaking the old language/voice. Kept
+  // as its own endpoint rather than folded into PATCH since it costs an LLM call.
+  .post(
+    "/:slug/regenerate-panel-copy",
+    async ({ params, set }) => {
+      const existing = await db
+        .select()
+        .from(trainerTable)
+        .where(eq(trainerTable.slug, params.slug))
+        .limit(1);
+
+      if (existing.length === 0) {
+        set.status = 404;
+        return { error: "Trainer not found" };
+      }
+
+      const trainer = existing[0];
+      const panelCopy = await generatePanelCopy({
+        personality: trainer.personality,
+        trainerName: trainer.name,
+        language: trainer.language ?? undefined,
+        selectedSport: trainer.sports.length > 0 ? trainer.sports : undefined,
+        userMessage: '',
+      });
+
+      if (!panelCopy) {
+        set.status = 502;
+        return { error: "Could not generate profile panel wording. Please try again." };
+      }
+
+      const updated = await db
+        .update(trainerTable)
+        .set({ panelCopy })
+        .where(eq(trainerTable.slug, params.slug))
+        .returning();
+
+      const [withMedia] = await attachMedia(updated);
+      return withMedia;
     }
   )
   // Regenerates just the portrait from a (possibly new) prompt. Separate from

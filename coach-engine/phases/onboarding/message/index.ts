@@ -7,7 +7,29 @@ import type { User } from '../../../types/user.type.js';
 import { mergeProfiles } from './instructions/message.service.js';
 import { classifyUnclassifiedNotes, applyClassifierUpdate } from './instructions/classifier.js';
 
+
 const MAX_ASSESSMENT_ATTEMPTS = 3;
+
+// Keys the assessment agents are contractually required to return. Used only as a
+// sanity check: a model answering in another language sometimes translates the JSON
+// keys themselves ("navn" instead of "name"). That still parses as valid JSON, so
+// without this check it would sail past the retry loop and then silently merge into
+// nothing — every `assessmentProfile.name ?? current.name` falls back and the turn
+// captures zero information, with no error logged anywhere. Checking for *some*
+// overlap (rather than an exact match) keeps this tolerant of models that omit keys
+// they have nothing to say about, while still catching a wholesale key translation.
+const EXPECTED_ASSESSMENT_KEYS = [
+    'name', 'age', 'gender', 'genderNotes', 'location', 'country',
+    'trainingBackground', 'performanceMetrics', 'injuries',
+    'motivations', 'goals', 'equipmentAndSchedule',
+    'pendingQsAndComments', 'unclassifiedNotes', 'followUp',
+];
+
+function hasExpectedAssessmentKeys(parsed: unknown): boolean {
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+    const keys = Object.keys(parsed as Record<string, unknown>);
+    return keys.some((key) => EXPECTED_ASSESSMENT_KEYS.includes(key));
+}
 
 // Runs a phase's assessment agent against the given OllamaInput, retrying a couple of times if
 // the model returns non-JSON prose instead of the expected profile JSON. Returns undefined
@@ -17,6 +39,11 @@ async function runAssessment(assessmentInput: OllamaInput, logLabel: string): Pr
         try {
             const assessmentMessage = await callOllama(assessmentInput);
             const parsed = parseJsonFromModelContent(assessmentMessage.content);
+            if (!hasExpectedAssessmentKeys(parsed)) {
+                throw new Error(
+                    `Assessment JSON has none of the expected profile keys (got: ${Object.keys(parsed ?? {}).join(', ') || 'none'})`
+                );
+            }
             console.log(`Response from assessment agent (${logLabel}) :`, assessmentMessage);
             return parsed;
         } catch (err) {
@@ -32,9 +59,22 @@ async function runAssessment(assessmentInput: OllamaInput, logLabel: string): Pr
 // only ever have been populated from actual user-provided text (see promptObject.ts's
 // ownedFieldsForPhase for why this is safe to trust).
 function isPhaseAlreadySatisfied(phase: keyof typeof promptsForPhases, profile: User): boolean {
-    return ownedFieldsForPhase[phase].every((field) => {
+    return missingOwnedFields(phase, profile).length === 0;
+}
+
+// Returns the owned fields for `phase` that are still empty in `profile`. This is the
+// single source of truth for "is this phase done?" — we deliberately do NOT trust the
+// assessment agent's own `followUp` value for that decision. Small models routinely
+// return `followUp: null` while `age` is still null (the prompt nudges them towards
+// null twice), which used to let the conversation sail straight into the next phase
+// without ever re-asking. The model's followUp is now only a hint that gets overridden
+// by this structural check.
+function missingOwnedFields(phase: keyof typeof promptsForPhases, profile: User): (keyof User)[] {
+    return ownedFieldsForPhase[phase].filter((field) => {
         const value = profile[field];
-        return Array.isArray(value) ? value.length > 0 : value != null;
+        if (Array.isArray(value)) return value.length === 0;
+        if (typeof value === 'string') return value.trim() === '';
+        return value == null;
     });
 }
 
@@ -77,9 +117,23 @@ export async function processMessage(input: TurnInput): Promise<ProcessMessageRe
     // judge with no new evidence at all and could hallucinate placeholder answers).
     if (mergedProfile.unclassifiedNotes && mergedProfile.unclassifiedNotes.length > 0) {
         console.log(`Routing ${mergedProfile.unclassifiedNotes.length} unclassified note(s) captured during ${input.phase} phase.`);
-        const classifierUpdate = await classifyUnclassifiedNotes(mergedProfile.unclassifiedNotes, mergedProfile);
+        const classifierUpdate = await classifyUnclassifiedNotes(mergedProfile.unclassifiedNotes, mergedProfile, input.language);
         mergedProfile = applyClassifierUpdate(mergedProfile, classifierUpdate);
     }
+
+    // Deterministically decide whether this phase is actually complete. The assessment
+    // agent's own followUp is unreliable (it says null while fields are still empty, or
+    // it hallucinates a value like age=30 from nothing), so recompute from the merged
+    // profile and overwrite it. followUp is a comma-separated list of missing field keys,
+    // matching the format the assessment prompt already asks the model to use.
+    const stillMissing = missingOwnedFields(input.phase, mergedProfile);
+    if (stillMissing.length > 0 && mergedProfile.followUp === null) {
+        console.log(`Assessment agent said followUp=null but ${input.phase} still has empty fields: ${stillMissing.join(', ')} — overriding.`);
+    }
+    mergedProfile = {
+        ...mergedProfile,
+        followUp: stillMissing.length > 0 ? stillMissing.join(',') : null,
+    };
 
     // We've already used every scripted follow-up prompt (including the "last attempt, move on" one)
     // and the profile is still incomplete. Stop asking and force the phase forward instead of
@@ -101,7 +155,10 @@ export async function processMessage(input: TurnInput): Promise<ProcessMessageRe
 
     //The response agent will ask followup questions about stuff thats possibly  missing. 
     if (mergedProfile.followUp) {
-        const responseInput = getResponseInput(trainerPrompt, assessmentProfile, input);
+        // Pass the *merged* profile (with the corrected followUp), not the raw assessment
+        // output — otherwise the response agent sees the model's bogus followUp=null and
+        // has nothing to ask about.
+        const responseInput = getResponseInput(trainerPrompt, mergedProfile, input);
         console.log('Calling response follow up agent with :', responseInput.prompt, 'last message was :', input.lastAssistantMessage);
         const response = await callOllama(responseInput);
         console.log('Response from response follow up agent :', response);
@@ -122,7 +179,7 @@ export async function processMessage(input: TurnInput): Promise<ProcessMessageRe
     // unclassifiedNotes classifier routing something the user genuinely said earlier.
     // Since there's no LLM cost per hop, we can chain through every already-satisfied
     // phase in one turn instead of bounding it to a single lookahead hop.
-    if (assessmentProfile.followUp === null) {
+    if (mergedProfile.followUp === null) {
         let candidatePhase = promptsForPhases[input.phase].nextPhase;
         console.log(`No follow up needed in ${input.phase} phase, checking next phase;`, candidatePhase);
 

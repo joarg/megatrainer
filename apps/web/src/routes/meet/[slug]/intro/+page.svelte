@@ -4,6 +4,12 @@
 	import type { PageProps } from './$types';
 	import type { App } from '../../../../../../api/src/index';
 	import ProfilePanel from '$lib/components/ProfilePanel.svelte';
+	import {
+		phasesWithCopy,
+		PROFILE_PHASES,
+		requestedFields,
+		type OnboardingField,
+	} from '$lib/onboarding/profile';
 
 	const api = treaty<App>('http://localhost:3000');
 
@@ -11,6 +17,9 @@
 		id: number;
 		role: 'assistant' | 'user' | 'manager';
 		text: string;
+		askedFor?: OnboardingField[];
+		requestState?: 'waiting' | 'evaluating' | 'evaluated';
+		answeredFieldKeys?: string[];
 	};
 
 	let { data }: PageProps = $props();
@@ -32,6 +41,47 @@
 	let currentPhase = $state('basicInfo');
 	let onboardingComplete = $state(false);
 	let showProfileOnMobile = $state(false);
+	let trainerActivityIndex = $state(0);
+	const onboardingPhases = $derived(phasesWithCopy(data.trainer.panelCopy));
+	const currentPhaseIndex = $derived(
+		Math.max(0, PROFILE_PHASES.findIndex((phase) => phase.key === currentPhase)),
+	);
+	const mobileStatusLabel = $derived(
+		onboardingComplete
+			? 'Onboarding complete'
+			: `Step ${currentPhaseIndex + 1} of ${PROFILE_PHASES.length}: ${onboardingPhases[currentPhaseIndex]?.label ?? 'Onboarding'}`,
+	);
+	const trainerActivities = [
+		{ label: 'is reading', icon: '👀' },
+		{ label: 'is thinking', icon: '🤔' },
+		{ label: 'is typing', icon: '⌨️' },
+	];
+	const trainerActivity = $derived(trainerActivities[trainerActivityIndex]);
+
+	$effect(() => {
+		if (!isSending) {
+			trainerActivityIndex = 0;
+			return;
+		}
+
+		const interval = setInterval(() => {
+			trainerActivityIndex = (trainerActivityIndex + 1) % trainerActivities.length;
+		}, 1500);
+
+		return () => clearInterval(interval);
+	});
+
+	function updateLatestTrainerRequest(
+		update: (message: ConversationMessage) => ConversationMessage,
+	): ConversationMessage | undefined {
+		const latestTrainerMessage = [...conversation].reverse().find((message) => message.role === 'assistant' && message.askedFor);
+		if (!latestTrainerMessage) return undefined;
+
+		conversation = conversation.map((message) =>
+			message.id === latestTrainerMessage.id ? update(message) : message,
+		);
+		return latestTrainerMessage;
+	}
 
 	$effect(() => {
 		const stateMessages = (page.state as { initialMessages?: Array<{ role: string; text: string }> })?.initialMessages;
@@ -40,6 +90,15 @@
 				id: i,
 				role: msg.role as ConversationMessage['role'],
 				text: msg.text,
+				askedFor:
+					msg.role === 'assistant'
+						? requestedFields({
+								profile: null,
+								phase: 'basicInfo',
+								complete: false,
+								copy: data.trainer.panelCopy,
+							})
+						: undefined,
 			}));
 			messageCounter = stateMessages.length;
 		}
@@ -53,6 +112,10 @@
 
 		conversation = [...conversation, { id: messageCounter, role: 'user', text: trimmedMessage }];
 		messageCounter += 1;
+		const requestBeingEvaluated = updateLatestTrainerRequest((message) => ({
+			...message,
+			requestState: 'evaluating',
+		}));
 		isSending = true;
 		sendStatus = 'Sending...';
 
@@ -65,15 +128,58 @@
 
 		if (error || !result) {
 			console.error('Failed to send onboarding message', error);
+			if (requestBeingEvaluated) {
+				conversation = conversation.map((message) =>
+					message.id === requestBeingEvaluated.id ? { ...message, requestState: 'waiting' } : message,
+				);
+			}
 			sendStatus = 'Failed to send message';
 			isSending = false;
 			return;
 		}
 
-		conversation = [...conversation, { id: messageCounter++, role: 'assistant', text: result.question ?? '' }];
-		currentProfile = (result.updatedUserProfile as Record<string, unknown>) ?? currentProfile;
-		currentPhase = (result as { phase?: string }).phase ?? currentPhase;
-		onboardingComplete = (result as { onboardingComplete?: boolean }).onboardingComplete ?? onboardingComplete;
+		const updatedProfile = (result.updatedUserProfile as Record<string, unknown>) ?? currentProfile;
+		const updatedPhase = (result as { phase?: string }).phase ?? currentPhase;
+		const isComplete = (result as { onboardingComplete?: boolean }).onboardingComplete ?? onboardingComplete;
+		const requestedFieldsForEvaluation = requestBeingEvaluated?.askedFor;
+		if (requestBeingEvaluated && requestedFieldsForEvaluation) {
+			conversation = conversation.map((message) =>
+				message.id === requestBeingEvaluated.id
+					? {
+							...message,
+							requestState: 'evaluated',
+							answeredFieldKeys: requestedFieldsForEvaluation
+								.filter((field) => {
+									const value = updatedProfile?.[field.key];
+									return Array.isArray(value)
+										? value.some((entry) => typeof entry !== 'string' || entry.trim().length > 0)
+										: typeof value === 'string'
+											? value.trim().length > 0
+											: value !== null && value !== undefined;
+								})
+								.map((field) => field.key),
+						}
+					: message,
+			);
+		}
+		conversation = [
+			...conversation,
+			{
+				id: messageCounter++,
+				role: 'assistant',
+				text: result.question ?? '',
+				askedFor: requestedFields({
+					profile: updatedProfile,
+					phase: updatedPhase,
+					complete: isComplete,
+					copy: data.trainer.panelCopy,
+				}),
+				requestState: 'waiting',
+			},
+		];
+		currentProfile = updatedProfile;
+		currentPhase = updatedPhase;
+		onboardingComplete = isComplete;
 
 		sendStatus = `Message sent in ${Date.now() - startedAt} ms`;
 		userMessage = '';
@@ -82,16 +188,75 @@
 </script>
 
 <div class="layout">
-	<div class="chat-col">
-		<h1>Onboarding with {data.trainer.name}</h1>
+	<button
+		type="button"
+		class="profile-toggle"
+		class:open={showProfileOnMobile}
+		aria-expanded={showProfileOnMobile}
+		aria-controls="profile-panel"
+		onclick={() => (showProfileOnMobile = !showProfileOnMobile)}
+	>
+		<span class="status-progress" aria-hidden="true">
+			{#each PROFILE_PHASES as _, index (index)}
+				<span class:complete={onboardingComplete || index < currentPhaseIndex} class:current={!onboardingComplete && index === currentPhaseIndex}></span>
+			{/each}
+		</span>
+		<span class="status-copy">
+			<span class="status-title">{mobileStatusLabel}</span>
+			<span class="status-action">{showProfileOnMobile ? 'Collapse profile' : 'View profile'}</span>
+		</span>
+		<span class="status-chevron" aria-hidden="true">{showProfileOnMobile ? '▲' : '▼'}</span>
+	</button>
 
+	<div class="chat-col">
 		{#if conversation.length > 0}
 			<div class="conversation">
 				{#each conversation as message (message.id)}
 					<article class="bubble {message.role}">
-						<strong>{message.role === 'assistant' ? 'Trainer' : message.role === 'manager' ? 'Manager' : 'You'}</strong>
+						<div class="message-head">
+							{#if message.role === 'assistant'}
+								{#if data.trainer.portraitUrl}
+									<img
+										class="trainer-avatar"
+										src={'http://localhost:3000' + data.trainer.portraitUrl}
+										alt=""
+									/>
+								{:else}
+									<span class="trainer-avatar fallback" aria-hidden="true">
+										{data.trainer.name.slice(0, 1).toUpperCase()}
+									</span>
+								{/if}
+							{/if}
+							<strong>{message.role === 'assistant' ? data.trainer.name : message.role === 'manager' ? 'Manager' : 'You'}</strong>
+						</div>
 						<p>{message.text}</p>
 					</article>
+					{#if message.role === 'assistant' && message.askedFor && message.askedFor.length > 0}
+						<aside
+							class="request-summary"
+							class:evaluating={message.requestState === 'evaluating'}
+							aria-label="Trainer request summary"
+						>
+							{#if message.requestState === 'evaluating'}
+								<span class="request-status">
+									<span class="spinner" aria-hidden="true"></span>
+									<span aria-hidden="true">{trainerActivity.icon}</span>
+									{data.trainer.name} {trainerActivity.label}...
+								</span>
+							{:else}
+								<span class="trainer-name">{data.trainer.name} asks for</span>
+								<span class="summary-icon" aria-hidden="true">✦</span>
+							{/if}
+							<ul>
+								{#each message.askedFor as field (field.key)}
+									{@const answered = message.answeredFieldKeys?.includes(field.key) ?? false}
+									<li class:answered>
+										<span aria-hidden="true">{answered ? '✓' : field.icon}</span>{field.label}
+									</li>
+								{/each}
+							</ul>
+						</aside>
+					{/if}
 				{/each}
 			</div>
 		{/if}
@@ -113,8 +278,23 @@
 		{/if}
 	</div>
 
-	<aside class="profile-col" class:open={showProfileOnMobile}>
-		<ProfilePanel profile={currentProfile} phase={currentPhase} complete={onboardingComplete} />
+	{#if showProfileOnMobile}
+		<button
+			type="button"
+			class="profile-backdrop"
+			aria-label="Collapse profile"
+			onclick={() => (showProfileOnMobile = false)}
+		></button>
+	{/if}
+
+	<aside id="profile-panel" class="profile-col" class:open={showProfileOnMobile}>
+		<ProfilePanel
+			profile={currentProfile}
+			phase={currentPhase}
+			complete={onboardingComplete}
+			copy={data.trainer.panelCopy}
+			awaitingReply={isSending}
+		/>
 
 		<details class="debug-details">
 			<summary>Debug: raw profile</summary>
@@ -122,14 +302,6 @@
 		</details>
 	</aside>
 
-	<button
-		type="button"
-		class="profile-toggle"
-		aria-expanded={showProfileOnMobile}
-		onclick={() => (showProfileOnMobile = !showProfileOnMobile)}
-	>
-		{showProfileOnMobile ? 'Hide your profile' : 'Show your profile'}
-	</button>
 </div>
 
 <style>
@@ -147,10 +319,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
-	}
-
-	h1 {
-		margin: 0 0 0.5rem;
 	}
 
 	.conversation {
@@ -179,6 +347,113 @@
 		margin: 0.25rem 0 0;
 		white-space: pre-wrap;
 		word-break: break-word;
+	}
+
+	.message-head {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+	}
+
+	.trainer-avatar {
+		width: 2.5rem;
+		height: 2.5rem;
+		border: 1px solid rgba(240, 180, 41, 0.65);
+		border-radius: 50%;
+		object-fit: cover;
+	}
+
+	.trainer-avatar.fallback {
+		display: grid;
+		place-items: center;
+		background: #f0b429;
+		color: #0f172a;
+		font-size: 0.9rem;
+		font-weight: 700;
+	}
+
+	.request-summary {
+		max-width: 40rem;
+		margin: -0.25rem 0 0.25rem;
+		padding: 0.35rem 0.55rem;
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		border: 1px dashed rgba(125, 211, 252, 0.35);
+		border-radius: 0.5rem;
+		background: rgba(125, 211, 252, 0.06);
+		color: #e0f2fe;
+		font-size: 0.72rem;
+		transition: border-color 180ms ease, background 180ms ease;
+	}
+
+	.request-summary.evaluating {
+		animation: request-pulse 1.2s ease-in-out infinite;
+		border-color: rgba(125, 211, 252, 0.7);
+	}
+
+	.summary-icon {
+		flex: none;
+		color: #7dd3fc;
+		font-size: 0.9rem;
+	}
+
+	.request-status {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		color: #bae6fd;
+		white-space: nowrap;
+	}
+
+	.spinner {
+		width: 0.65rem;
+		height: 0.65rem;
+		border: 2px solid rgba(125, 211, 252, 0.35);
+		border-top-color: #7dd3fc;
+		border-radius: 50%;
+		animation: spin 700ms linear infinite;
+	}
+
+	.trainer-name {
+		flex: none;
+		font-weight: 700;
+		color: #e0f2fe;
+	}
+
+	.request-summary ul {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+	}
+
+	.request-summary li {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		padding: 0.12rem 0.35rem;
+		border-radius: 999px;
+		background: rgba(125, 211, 252, 0.12);
+	}
+
+	.request-summary li.answered {
+		background: rgba(74, 222, 128, 0.16);
+		color: #bbf7d0;
+	}
+
+	@keyframes request-pulse {
+		50% {
+			background: rgba(125, 211, 252, 0.13);
+		}
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	form {
@@ -262,7 +537,7 @@
 	@media (max-width: 900px) {
 		.layout {
 			grid-template-columns: 1fr;
-			padding: 0.75rem 0.75rem 4.5rem;
+			padding: 4.5rem 0.75rem 0.75rem;
 		}
 
 		.chat-col {
@@ -271,13 +546,24 @@
 
 		.profile-col {
 			order: 2;
-			position: static;
-			max-height: none;
-			display: none;
+			position: fixed;
+			top: 4.45rem;
+			left: 0.75rem;
+			right: 0.75rem;
+			z-index: 11;
+			max-height: calc(50vh - 4.45rem);
+			display: block;
+			overflow-y: auto;
+			opacity: 0;
+			transform: translateY(-1rem);
+			pointer-events: none;
+			transition: opacity 180ms ease, transform 220ms ease;
 		}
 
 		.profile-col.open {
-			display: block;
+			opacity: 1;
+			transform: translateY(0);
+			pointer-events: auto;
 		}
 
 		.bubble {
@@ -289,11 +575,81 @@
 			position: fixed;
 			left: 0.75rem;
 			right: 0.75rem;
-			bottom: 0.75rem;
+			top: 0.75rem;
 			z-index: 10;
 			align-self: auto;
-			padding: 0.75rem 1rem;
-			text-align: center;
+			padding: 0.65rem 0.8rem;
+			display: flex;
+			align-items: center;
+			gap: 0.65rem;
+			background: var(--mt-bg-elevated, #111a2c);
+			border-color: rgba(240, 180, 41, 0.55);
+			color: var(--mt-text, #e5e9f0);
+			text-align: left;
+			box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+			transition: border-color 180ms ease, background 180ms ease;
+		}
+
+		.profile-toggle.open {
+			background: #17243a;
+			border-color: var(--mt-gold, #f0b429);
+		}
+
+		.status-progress {
+			display: flex;
+			gap: 0.2rem;
+		}
+
+		.status-progress span {
+			width: 0.4rem;
+			height: 1.6rem;
+			border-radius: 999px;
+			background: rgba(255, 255, 255, 0.14);
+		}
+
+		.status-progress span.complete {
+			background: #86efac;
+		}
+
+		.status-progress span.current {
+			background: var(--mt-gold, #f0b429);
+		}
+
+		.status-copy {
+			flex: 1;
+			min-width: 0;
+			display: flex;
+			flex-direction: column;
+			gap: 0.05rem;
+		}
+
+		.status-title {
+			overflow: hidden;
+			font-size: 0.82rem;
+			font-weight: 700;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.status-action {
+			color: var(--mt-text-muted, #94a3b8);
+			font-size: 0.68rem;
+			font-weight: 500;
+		}
+
+		.status-chevron {
+			color: var(--mt-gold, #f0b429);
+		}
+
+		.profile-backdrop {
+			position: fixed;
+			inset: 0;
+			z-index: 10;
+			width: auto;
+			padding: 0;
+			background: rgba(3, 7, 18, 0.48);
+			border: none;
+			border-radius: 0;
 		}
 	}
 </style>
