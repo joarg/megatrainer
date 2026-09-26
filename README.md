@@ -1,39 +1,64 @@
 # megaTrainer
 
-> A learning project. I'm building it to understand how multi-agent LLM systems
-> behave when their output is parsed by code rather than read by a human.
+> Every trainer starts with the same boring form: a grid of empty inputs asking for your
+> age, your goals, your weekly availability. Nobody enjoys filling it in, and most people
+> abandon it halfway. I wanted to know whether a **conversation** could replace it — and
+> whether an LLM could do the form-filling as a side effect of talking.
 
-An AI coaching platform. A user has a structured onboarding interview with an
-AI-generated trainer persona, who builds a structured profile of them along the way.
-Every trainer gets its own personality, world, panel wording and generated face.
-Everything runs locally — no cloud LLM, no API keys.
+That's what this is. You answer in your own words, in your own language, and the trainer
+picks the facts out of what you said. The conversation *is* the form.
 
-![An onboarding turn: the message is sent, the profile panel advances from step 1 to step 2 as the assessment lands, and the trainer's reply appears.](docs/images/onboarding-turn.gif)
+![A single onboarding turn, slowed down. The user sends "Hi, I'm Daniel. I'm 29 and I live in Manchester." The trainer's status cycles through thinking, typing and reading while the profile panel holds name, age and location at "Evaluating input". Then all three resolve at once — NAME Daniel, AGE 29, LOCATION Manchester, "+3 logged" — and the trainer replies using those details: "Thank you, Daniel. Knowing your location in Manchester is helpful."](docs/images/onboarding-turn.gif)
+
+Underneath, every trainer is generated: its own world, personality, voice, panel wording and
+face. Nothing about a trainer is hand-written except a name and a sentence of intent.
 
 **Stack:** [Bun](https://bun.sh) · [Elysia](https://elysiajs.com) · [SvelteKit 5](https://svelte.dev) · [PostgreSQL](https://www.postgresql.org) · [Drizzle](https://orm.drizzle.team) · [Ollama](https://ollama.ai) · [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
 
 ---
 
-## What I wanted to learn
+## The idea
 
-**A strongly typed stack, end to end.** This is the thing I've struggled to find in
-other places, and I got it here: Drizzle infers row types from the schema
-(`typeof trainerTable.$inferSelect`), the Elysia app exports its own type
-(`export type App = typeof app`), and the SvelteKit frontend consumes exactly that via
-`treaty<App>`. Change a response shape and the frontend fails to compile. There is no
-hand-written DTO layer to drift.
+**A form is a bad conversation, and a conversation is a good form.** A traditional intake
+form asks you to know what it wants before it can help you. It can't tell that "I get winded
+after a minute" is your real problem until you've already answered six unrelated questions.
+A conversation asks one thing at a time and adapts — and because an LLM is doing the
+listening, the structured data falls out of the reply for free.
 
-**How far a persona can be pushed before the structure breaks.** My first instinct was
-many different AI trainers all following one shared interview guide. It derailed almost
-immediately. Different personas interpret "interview" differently, the prompts fight
-each other, and the output becomes chaotic.
+**One interview guide, many trainers.** Every trainer runs the same four-phase interview over
+the same fixed set of fields, because they all feed the same downstream consumer: a
+personalised training plan. What changes per trainer is *how* the questions get asked and
+*who* is asking. The profile that comes out the other end is a file, not a transcript.
 
-The lesson that unlocked it: **LLMs are very talkative, and the more context you give
-them the more they drift.** Especially with unpredictable user input. The fix was
-shorter, clearer system prompts — and splitting the job across two models instead of
-asking one model to do everything.
+**The interesting constraint is that the output is parsed by code.** A chat UI can hide a
+lot. This one can't — every trainer reply has to be good prose *and* resolve to a schema.
+That constraint is where most of the design decisions below come from.
 
-## How it works
+## A trainer is generated, not written
+
+You pick a **world** — a setting with its own aesthetic and coaching register — and a
+trainer inside it. The world defines the vibe; the trainer defines the voice. Both the
+cover art and the trainer's face are generated locally through ComfyUI.
+
+![The world picker: three worlds side by side. "Trendy Trainers — fresh moves, fast progress", "Body & Spirit — train the body, tend the spirit", and "Macho World", whose description runs to a joke about Dolph, Arnold and Chuck opening a gym.](docs/images/worlds-picker.jpg)
+
+Each world has its own generated cover art and its own tone. Body & Spirit is calm and
+mindful; Macho World is deliberately blunt and a bit comic.
+
+![Body & Spirit, showing three generated trainers: Luna Serrano ("breathe first, move second", vinyasa yoga), Kenji Osei ("find your center, one breath at a time", tai chi and qigong) and Ida Halvorsen ("rest is not the opposite of training", breathwork and recovery).](docs/images/world-body-spirit.jpg)
+
+Ten trainers exist so far, each constructed from a name, a personality description, a
+sport list and a world. From that input the system generates a tagline, a greeting, the
+panel's own field labels and icons, a portrait and an action shot. The Norwegian trainers
+run the same interview guide in Norwegian.
+
+![Macho World, with three generated trainer portraits in a gym setting.](docs/images/world-macho.jpg)
+
+This is what makes the form-replacement idea tractable. If onboarding is a conversation
+with a character, then a user who picks Macho World and one who picks Body & Spirit have
+very different relationships with the intake process — and neither is filling in a form.
+
+## How the interview works
 
 The interview runs as four ordered phases, each owning a fixed set of profile fields:
 `basicInfo` → `motivationsAndGoals` → `backgroundAndMetrics` → `toolsAndTime`.
@@ -56,6 +81,23 @@ and no incentive to be nice, which is what makes `followUp` trustworthy.
 
 The assessor's prompt also states that JSON keys must stay in English while values
 follow the user's language, so a Norwegian conversation still merges correctly.
+
+## Two things that turned out harder than expected
+
+**Keeping the persona inside the schema.** My first instinct was many different AI trainers
+all following one shared interview guide. It derailed almost immediately — different personas
+interpret "interview" differently, the prompts fight each other, and the output becomes
+chaotic. The lesson that unlocked it: **LLMs are very talkative, and the more context you
+give them the more they drift**, especially with unpredictable user input. The fix was
+shorter, clearer system prompts, and splitting the job across two models rather than asking
+one model to do everything.
+
+**A strongly typed stack, end to end.** Drizzle infers row types from the schema
+(`typeof trainerTable.$inferSelect`), the Elysia app exports its own type
+(`export type App = typeof app`), and the SvelteKit frontend consumes exactly that via
+`treaty<App>`. Change a response shape and the frontend fails to compile. There is no
+hand-written DTO layer to drift — which matters more than usual here, because the thing
+being typed is LLM output.
 
 ### One bug that changed my mind about the design
 
@@ -121,5 +163,5 @@ existing `--mt-*` tokens → 404 for unknown trainer → delete the dead routes.
 
 ## Licence
 
-Learning project, no licence granted. The type chain and the two-model onboarding design
-are the parts I'd most want to talk through.
+No licence granted. The form-replacement idea, the two-model onboarding split and the
+generated-trainer pipeline are the parts I'd most want to talk through.
