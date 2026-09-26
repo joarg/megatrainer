@@ -8,6 +8,8 @@ AI-generated trainer persona, who builds a structured profile of them along the 
 Every trainer gets its own personality, world, panel wording and generated face.
 Everything runs locally — no cloud LLM, no API keys.
 
+![An onboarding turn: the message is sent, the profile panel advances from step 1 to step 2 as the assessment lands, and the trainer's reply appears.](docs/images/onboarding-turn.gif)
+
 **Stack:** [Bun](https://bun.sh) · [Elysia](https://elysiajs.com) · [SvelteKit 5](https://svelte.dev) · [PostgreSQL](https://www.postgresql.org) · [Drizzle](https://orm.drizzle.team) · [Ollama](https://ollama.ai) · [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
 
 ---
@@ -49,6 +51,8 @@ Separating these is the central design decision. A single model asked to convers
 judge the conversation tends to be agreeable — it accepts a vague answer as good
 enough because it was the one who asked the vague question. The assessor has no persona
 and no incentive to be nice, which is what makes `followUp` trustworthy.
+
+![The profile panel before and after a turn: step 1 in progress with name, age and location being evaluated, then step 1 marked complete and step 2 in progress.](docs/images/onboarding-phases.png)
 
 The assessor's prompt also states that JSON keys must stay in English while values
 follow the user's language, so a Norwegian conversation still merges correctly.
