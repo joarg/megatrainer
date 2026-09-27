@@ -1,38 +1,60 @@
 # megaTrainer
 
-> Every trainer starts with the same boring form: a grid of empty inputs asking for your
-> age, your goals, your weekly availability. Nobody enjoys filling it in, and most people
-> abandon it halfway. I wanted to know whether a **conversation** could replace it — and
-> whether an LLM could do the form-filling as a side effect of talking.
+I talk to a commercial AI trainer quite a lot. It's genuinely good at telling me what I
+want to hear, and genuinely bad at holding a plan for longer than a few weeks. Somewhere
+in the third week it stops remembering what I told it in the first.
 
-That's what this is. You answer in your own words, in your own language, and the trainer
-picks the facts out of what you said. The conversation *is* the form.
+That's partly a product problem and partly a design one. A chatbot has no reason to write
+anything down: the whole state of you lives in a scrollback buffer, and once that window
+slides, the model is guessing from whatever it can still see. I wanted the opposite — a
+trainer that talks to you like a person, but keeps a structured record, so what it tells
+you in week nine is built on what it actually learned in week one.
+
+megaTrainer is my answer to that, and my excuse to catch up on a lot of things I'd missed.
+
+## What this was also for
+
+I needed a learning project, and I'd fallen behind on a few things: SSR, Docker, and
+most of all using LLMs and image generation directly inside an app rather than through a
+hosted SDK. I'd never run a Docker container before, so I gave myself a hard constraint —
+**no cloud services, not even for the model.** Everything runs on my own machine:
+
+- **Postgres, the API, Ollama and ComfyUI all run in Docker Compose.** The LLM and the
+  image generation are containers too, both with GPU passthrough, so the only traffic
+  crossing the network is between them.
+- **No API keys anywhere.** The model is a local Ollama model, the images come from a
+  local ComfyUI. Nothing about your profile leaves the machine.
+- **SvelteKit does SSR** on the world and trainer pages — a `+page.server.ts` fetches
+  through Elysia Eden on the server, so the trainer list is in the HTML before any
+  JavaScript runs.
+
+It runs smooth on an RTX 3080 Ti. Everything comes up with `docker compose up -d`, apart
+from the frontend, which I run directly with `bun run dev:web` for hot reload.
 
 ![A single onboarding turn, slowed down. The user sends "Hi, I'm Daniel. I'm 29 and I live in Manchester." The trainer's status cycles through thinking, typing and reading while the profile panel holds name, age and location at "Evaluating input". Then all three resolve at once — NAME Daniel, AGE 29, LOCATION Manchester, "+3 logged" — and the trainer replies using those details: "Thank you, Daniel. Knowing your location in Manchester is helpful."](docs/images/onboarding-turn.gif)
 
-Underneath, every trainer is generated: its own world, personality, voice, panel wording and
-face. Nothing about a trainer is hand-written except a name and a sentence of intent.
+That GIF is the whole idea in one turn. You send an ordinary sentence. The trainer reads it
+for facts, writes them into a structured profile, and replies as a character — using your
+name and your city, because it just learned them rather than because you filled in a box.
 
-**Stack:** [Bun](https://bun.sh) · [Elysia](https://elysiajs.com) · [SvelteKit 5](https://svelte.dev) · [PostgreSQL](https://www.postgresql.org) · [Drizzle](https://orm.drizzle.team) · [Ollama](https://ollama.ai) · [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
+**Stack:** [Bun](https://bun.sh) · [Elysia](https://elysiajs.com) · [SvelteKit 5](https://svelte.dev) · [PostgreSQL](https://www.postgresql.org) · [Drizzle](https://orm.drizzle.team) · [Docker](https://www.docker.com) · [Ollama](https://ollama.ai) · [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
 
 ---
 
-## The idea
+## The design problem
 
-**A form is a bad conversation, and a conversation is a good form.** A traditional intake
-form asks you to know what it wants before it can help you. It can't tell that "I get winded
-after a minute" is your real problem until you've already answered six unrelated questions.
-A conversation asks one thing at a time and adapts — and because an LLM is doing the
-listening, the structured data falls out of the reply for free.
+**A conversation can replace a form, but only if something writes the answers down.** A
+form is a bad conversation — it asks you to know what it wants before it can help you, and
+it can't tell that "I get winded after a minute" is your real problem until you've already
+answered six unrelated questions. Chatting is better at that, and an LLM is good at
+pulling facts out of a sentence. The catch is that LLM output isn't a form submission. It's
+prose, it's inconsistent, and it arrives in whatever shape the model felt like that day.
+Most of what follows is about surviving that.
 
-**One interview guide, many trainers.** Every trainer runs the same four-phase interview over
-the same fixed set of fields, because they all feed the same downstream consumer: a
-personalised training plan. What changes per trainer is *how* the questions get asked and
-*who* is asking. The profile that comes out the other end is a file, not a transcript.
-
-**The interesting constraint is that the output is parsed by code.** A chat UI can hide a
-lot. This one can't — every trainer reply has to be good prose *and* resolve to a schema.
-That constraint is where most of the design decisions below come from.
+**One interview guide, many trainers.** Every trainer runs the same four-phase interview
+over the same fixed set of fields, because they all feed the same downstream consumer: a
+personalised training plan. What varies per trainer is who is asking and how. The output
+is a file, not a transcript.
 
 ## A trainer is generated, not written
 
@@ -123,13 +145,18 @@ cooperative, normal and evasive users across three trainer personas rather than 
 happy path.
 
 ```bash
-bun install && docker compose up -d
-bun run dev:api      # terminal 1 — http://localhost:3000
-bun run dev:web      # terminal 2 — http://localhost:5173
-bun run check        # tests + typecheck
+bun install && docker compose up -d   # api, postgres, ollama, comfyui
+bun run dev:web                       # frontend on the host, for hot reload
+bun run check                         # tests + typecheck
 ```
 
-Trainer creation generates two images through ComfyUI and takes ~80s on a GPU. Set
+The API is in the Compose file with a dev Dockerfile, but I normally run it on the host
+too (`bun run dev:api`) so I get stack traces and fast restarts; both reach the same
+Postgres, Ollama and ComfyUI over the Compose network. Compose alone is enough to get
+everything talking.
+
+First boot pulls the Ollama model and the ComfyUI checkpoints, so it takes a while.
+Trainer creation then generates two images and takes ~80s on a GPU. Set
 `PORTRAIT_MODEL=lightning` in `.env` for fast drafts.
 
 ## API

@@ -1,4 +1,4 @@
-# Development stack: Bun API + Angular Web + PostgreSQL + Ollama
+# Development stack: Bun API + SvelteKit web + PostgreSQL + Ollama + ComfyUI
 # Run locally: docker-compose up -d
 # Then: bun install && bun run dev:api & bun run dev:web
 
